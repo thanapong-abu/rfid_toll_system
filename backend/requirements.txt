@@ -1,3 +1,7 @@
-pyserial==3.5
-Flask==3.0.2
-Flask-Cors==4.0.0
+Flask
+flask-cors
+bcrypt
+PyJWT
+pyserial
+requests
+gunicorn
