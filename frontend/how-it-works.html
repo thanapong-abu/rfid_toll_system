@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>How It Works - RFID Toll System</title>
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&family=Orbitron:wght@500;700;900&display=swap" rel="stylesheet">
+
+    <style>
+        :root {
+            --bg-primary: #0D0F14;
+            --bg-secondary: #161A24;
+            --bg-tertiary: #1E2433;
+            --accent-amber: #F5A623;
+            --accent-green: #00FF88;
+            --accent-red: #FF3B4E;
+            --accent-blue: #00BFFF;
+            --text-primary: #E8ECF0;
+            --text-muted: #6B7A99;
+            --border: #2A3148;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html { scroll-behavior: smooth; }
+
+        body {
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+            font-family: 'IBM Plex Mono', monospace;
+            overflow-x: hidden;
+        }
+
+        /* Scanline Overlay */
+        body::before {
+            content: " "; display: block; position: fixed; top: 0; left: 0; bottom: 0; right: 0;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+            z-index: 100; background-size: 100% 2px, 3px 100%; pointer-events: none;
+        }
+
+        /* Grid Background */
+        .grid-bg {
+            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+            background-image: linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+            background-size: 40px 40px; z-index: -2;
+        }
+
+        /* Navbar */
+        .navbar {
+            position: fixed; top: 0; width: 100%; padding: 20px 5%; display: flex; justify-content: space-between; align-items: center;
+            background: rgba(13, 15, 20, 0.8); backdrop-filter: blur(12px); border-bottom: 1px solid var(--border); z-index: 50;
+        }
+        .logo { font-family: 'Orbitron', sans-serif; font-size: 1.5rem; letter-spacing: 2px; color: var(--text-primary); text-decoration: none; }
+        .cursor { color: var(--accent-amber); animation: blink 0.8s step-end infinite; }
+        .nav-links { display: flex; gap: 32px; align-items: center; }
+        .nav-links a { color: var(--text-muted); text-decoration: none; font-size: 0.9rem; transition: color 0.3s; }
+        .nav-links a:hover, .nav-links a.active { color: var(--text-primary); }
+        .nav-cta {
+            color: var(--accent-amber) !important; border: 1px solid var(--accent-amber); padding: 8px 16px; font-family: 'Orbitron', sans-serif;
+            transition: all 0.3s !important;
+        }
+        .nav-cta:hover { background: rgba(245, 166, 35, 0.1); box-shadow: 0 0 15px rgba(245, 166, 35, 0.2); }
+
+        .container { max-width: 1000px; margin: 0 auto; padding: 120px 20px 80px 20px; }
+
+        /* Typography */
+        h1, h2, h3, h4 { font-family: 'Orbitron', sans-serif; }
+        .section-label { color: var(--accent-amber); font-size: 0.8rem; letter-spacing: 2px; margin-bottom: 16px; display: inline-block; padding: 4px 12px; background: rgba(245,166,35,0.1); border: 1px solid var(--accent-amber); }
+        
+        /* Hero */
+        .page-hero { text-align: center; margin-bottom: 80px; }
+        .page-hero h1 { font-size: 3rem; margin-bottom: 16px; letter-spacing: 1px; }
+        .page-hero p { color: var(--text-muted); font-size: 1.1rem; max-width: 600px; margin: 0 auto; }
+
+        /* PIPELINE TIMELINE */
+        .pipeline-wrapper { position: relative; margin-bottom: 100px; padding: 40px 0; }
+        
+        /* Animated Dashed Line */
+        .timeline-line {
+            position: absolute; top: 0; left: 50%; transform: translateX(-50%); width: 2px; height: 100%;
+            background-image: linear-gradient(to bottom, var(--accent-amber) 50%, transparent 50%);
+            background-size: 2px 20px; background-repeat: repeat-y; z-index: 1; opacity: 0.3;
+        }
+        .timeline-progress {
+            position: absolute; top: 0; left: 50%; transform: translateX(-50%); width: 4px; height: 0%;
+            background: var(--accent-amber); z-index: 2; box-shadow: 0 0 15px var(--accent-amber);
+            transition: height 0.5s ease-out;
+        }
+
+        .step-card {
+            width: calc(50% - 40px); background: var(--bg-secondary); border: 1px solid var(--border); padding: 32px;
+            position: relative; z-index: 10; margin-bottom: 40px; opacity: 0; transform: translateX(-50px);
+            transition: all 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .step-card.right { margin-left: auto; transform: translateX(50px); }
+        .step-card.visible { opacity: 1; transform: translateX(0); }
+        
+        .step-card:hover { border-color: var(--accent-amber); box-shadow: 0 10px 30px rgba(245, 166, 35, 0.05); }
+        .step-card.success:hover { border-color: var(--accent-green); box-shadow: 0 10px 30px rgba(0, 255, 136, 0.05); }
+        .step-card.danger:hover { border-color: var(--accent-red); box-shadow: 0 10px 30px rgba(255, 59, 78, 0.05); }
+
+        /* Step Dot */
+        .step-dot {
+            position: absolute; top: 50%; width: 16px; height: 16px; background: var(--bg-primary); border: 2px solid var(--accent-amber);
+            border-radius: 50%; transform: translateY(-50%); z-index: 10;
+        }
+        .step-card:not(.right) .step-dot { right: -48px; }
+        .step-card.right .step-dot { left: -48px; }
+        .step-card.visible .step-dot { background: var(--accent-amber); box-shadow: 0 0 10px var(--accent-amber); }
+
+        .step-icon { font-size: 2.5rem; margin-bottom: 16px; display: inline-block; }
+        .step-title { font-size: 1.2rem; color: var(--text-primary); margin-bottom: 12px; }
+        .step-desc { color: var(--text-muted); font-size: 0.95rem; line-height: 1.6; }
+
+        /* The Fork (Success/Failure) */
+        .fork-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-top: 60px; position: relative; z-index: 10; }
+        .fork-card { background: var(--bg-secondary); border: 1px solid var(--border); padding: 32px; opacity: 0; transform: translateY(30px); transition: all 0.6s ease-out; }
+        .fork-card.visible { opacity: 1; transform: translateY(0); }
+        
+        .fork-card.success { border-top: 3px solid var(--accent-green); }
+        .fork-card.danger { border-top: 3px solid var(--accent-red); }
+
+        .pulse-green { animation: pulseGreen 2s infinite; }
+        .pulse-red { animation: pulseRed 2s infinite; }
+
+        /* ASCII Pin Map */
+        .hardware-section { margin-bottom: 80px; }
+        .code-block {
+            background: var(--bg-secondary); border: 1px solid var(--border); padding: 24px; border-left: 3px solid var(--accent-blue);
+            font-family: 'IBM Plex Mono', monospace; font-size: 0.9rem; color: var(--text-primary); overflow-x: auto; white-space: pre; line-height: 1.5;
+        }
+        .pin { color: var(--accent-amber); font-weight: bold; }
+
+        /* DB Schema Tables */
+        .schema-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; margin-bottom: 40px; }
+        .schema-table-wrapper { background: var(--bg-secondary); border: 1px solid var(--border); overflow: hidden; }
+        .schema-title { padding: 16px; border-bottom: 1px solid var(--border); font-family: 'Orbitron'; color: var(--accent-blue); background: rgba(0, 191, 255, 0.05); }
+        table { width: 100%; border-collapse: collapse; font-family: 'Barlow Condensed', sans-serif; font-size: 1.1rem; }
+        th { text-align: left; padding: 12px 16px; border-bottom: 1px solid var(--border); color: var(--text-muted); font-weight: normal; }
+        td { padding: 12px 16px; border-bottom: 1px solid rgba(42, 49, 72, 0.5); }
+        tbody tr:nth-child(even) { background-color: var(--bg-tertiary); }
+        .key { color: var(--accent-amber); font-family: 'IBM Plex Mono'; font-size: 0.9rem; }
+
+        /* Callout */
+        .callout { background: rgba(245, 166, 35, 0.05); border: 1px solid var(--border); border-left: 4px solid var(--accent-amber); padding: 24px; display: flex; align-items: center; gap: 16px; margin-bottom: 80px; }
+        .callout-icon { font-size: 2rem; }
+        .callout-text { color: var(--text-primary); line-height: 1.6; font-size: 0.95rem; }
+
+        /* Footer */
+        footer { border-top: 1px solid var(--border); padding: 40px 20px; text-align: center; background: var(--bg-secondary); }
+        .footer-text { color: var(--text-muted); font-size: 0.85rem; line-height: 1.8; }
+
+        /* Animations */
+        @keyframes blink { 50% { opacity: 0; } }
+        @keyframes pulseGreen { 0% { text-shadow: 0 0 0 rgba(0,255,136,0.7); } 50% { text-shadow: 0 0 20px rgba(0,255,136,0.4); } 100% { text-shadow: 0 0 0 rgba(0,255,136,0); } }
+        @keyframes pulseRed { 0% { text-shadow: 0 0 0 rgba(255,59,78,0.7); } 50% { text-shadow: 0 0 20px rgba(255,59,78,0.4); } 100% { text-shadow: 0 0 0 rgba(255,59,78,0); } }
+        .fade-in { opacity: 0; transform: translateY(20px); transition: opacity 0.6s, transform 0.6s; }
+        .fade-in.visible { opacity: 1; transform: translateY(0); }
+
+        @media (max-width: 768px) {
+            .step-card { width: 100%; margin-left: 0 !important; transform: translateY(30px) !important; padding-left: 60px; }
+            .step-dot { left: 20px !important; }
+            .timeline-line, .timeline-progress { left: 28px; }
+            .fork-grid, .schema-grid { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="grid-bg"></div>
+
+    <nav class="navbar">
+        <a href="index.html" class="logo">RFID_TOLL<span class="cursor">_</span></a>
+        <div class="nav-links">
+            <a href="index.html">Home</a>
+            <a href="how-it-works.html" class="active">How It Works</a>
+            <a href="index.html#team">Team</a>
+            <a href="admin/login.html" class="nav-cta">Admin Login &rarr;</a>
+        </div>
+    </nav>
+
+    <div class="container">
+        
+        <div class="page-hero">
+            <div class="section-label">SYSTEM ARCHITECTURE</div>
+            <h1>From Scan to Open — in 1.5 Seconds</h1>
+            <p>A complete technical walkthrough of the hardware-to-software pipeline powering the RFID Toll Collection System.</p>
+        </div>
+
+        <div class="pipeline-wrapper" id="pipelineWrapper">
+            <div class="timeline-line"></div>
+            <div class="timeline-progress" id="timelineProgress"></div>
+
+            <div class="step-card observe-me">
+                <div class="step-dot"></div>
+                <div class="step-icon">🚘</div>
+                <h3 class="step-title">Step 1: Vehicle Approach</h3>
+                <p class="step-desc">The vehicle arrives at the toll plaza. The mounted RFID tag enters the RC522 reader's electromagnetic field (effective range: 3–5cm).</p>
+            </div>
+
+            <div class="step-card right observe-me">
+                <div class="step-dot"></div>
+                <div class="step-icon" style="color: var(--accent-amber);">📡</div>
+                <h3 class="step-title">Step 2: Hardware Scan</h3>
+                <p class="step-desc">The Arduino-driven RC522 module captures the 4-byte hexadecimal UID of the tag. The buzzer sounds a short beep to confirm read success.</p>
+            </div>
+
+            <div class="step-card observe-me">
+                <div class="step-dot"></div>
+                <div class="step-icon">🔌</div>
+                <h3 class="step-title">Step 3: Serial Transmission</h3>
+                <p class="step-desc">The Arduino packages the raw UID string (e.g., <span style="font-family: monospace; color: var(--accent-amber);">8D 20 06 85</span>) and transmits it to the connected PC via USB Serial communication at 9600 baud.</p>
+            </div>
+
+            <div class="step-card right observe-me">
+                <div class="step-dot"></div>
+                <div class="step-icon" style="color: var(--accent-blue);">🗄️</div>
+                <h3 class="step-title">Step 4: Database Query</h3>
+                <p class="step-desc">The Python middleware script intercepts the serial data and queries the local SQLite database to verify the vehicle's registration and check if <code style="color: var(--accent-blue);">wallet_bal >= 100</code>.</p>
+            </div>
+
+            <div class="fork-grid">
+                <div class="fork-card success observe-me">
+                    <div class="step-icon pulse-green">✓</div>
+                    <h3 class="step-title" style="color: var(--accent-green);">Authorized Path</h3>
+                    <p class="step-desc" style="margin-bottom: 16px;">Toll fee is atomically deducted from the database. Transaction is recorded. The PC sends byte <code style="color: var(--accent-green);">1</code> to the Arduino.</p>
+                    <div style="padding-top: 16px; border-top: 1px dashed var(--border);">
+                        <h4 style="font-size: 0.9rem; color: var(--text-primary); margin-bottom: 8px;">Hardware Response:</h4>
+                        <p class="step-desc" style="font-size: 0.85rem;">Green LED activates. SG90 Servo rotates from 0° to -90° (Gate Opens). Remains open for 5 seconds.</p>
+                    </div>
+                </div>
+
+                <div class="fork-card danger observe-me">
+                    <div class="step-icon pulse-red">✗</div>
+                    <h3 class="step-title" style="color: var(--accent-red);">Denied Path</h3>
+                    <p class="step-desc" style="margin-bottom: 16px;">Insufficient funds or unknown tag detected. Transaction is flagged as Denied. The PC sends byte <code style="color: var(--accent-red);">0</code> to the Arduino.</p>
+                    <div style="padding-top: 16px; border-top: 1px dashed var(--border);">
+                        <h4 style="font-size: 0.9rem; color: var(--text-primary); margin-bottom: 8px;">Hardware Response:</h4>
+                        <p class="step-desc" style="font-size: 0.85rem;">Red LED activates. Buzzer emits a 2-second error tone. Servo remains locked at 0° (Gate Closed).</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="hardware-section fade-in observe-me">
+            <h2 class="section-title" style="text-align: left; font-size: 1.8rem; margin-bottom: 24px;">HARDWARE PIN MAP</h2>
+            <div class="code-block">
++-------------------------+-------------------------+
+| COMPONENT               | ARDUINO UNO PIN         |
++-------------------------+-------------------------+
+| RC522 RFID Reader       |                         |
+|   - SDA (SS)            | Digital <span class="pin">10</span>               |
+|   - SCK                 | Digital <span class="pin">13</span>               |
+|   - MOSI                | Digital <span class="pin">11</span>               |
+|   - MISO                | Digital <span class="pin">12</span>               |
+|   - RST                 | Digital <span class="pin">9</span>                |
+|                         |                         |
+| SG90 Micro Servo        | Signal -> Digital <span class="pin">3</span>      |
+| Green LED (Auth)        | Anode  -> Digital <span class="pin">5</span>      |
+| Red LED (Denied)        | Anode  -> Digital <span class="pin">4</span>      |
+| Active Buzzer           | Signal -> Digital <span class="pin">2</span>      |
++-------------------------+-------------------------+</div>
+        </div>
+
+        <div class="fade-in observe-me">
+            <h2 class="section-title" style="text-align: left; font-size: 1.8rem; margin-bottom: 24px;">DATA SCHEMA</h2>
+            <div class="schema-grid">
+                
+                <div class="schema-table-wrapper">
+                    <div class="schema-title">TABLE: users</div>
+                    <table>
+                        <thead><tr><th>COLUMN</th><th>TYPE</th><th>ATTRIBUTES</th></tr></thead>
+                        <tbody>
+                            <tr><td><span class="key">rfid_id</span></td><td>TEXT</td><td>PRIMARY KEY</td></tr>
+                            <tr><td>vehicle_no</td><td>TEXT</td><td>NOT NULL</td></tr>
+                            <tr><td>owner_name</td><td>TEXT</td><td>NOT NULL</td></tr>
+                            <tr><td>wallet_bal</td><td>REAL</td><td>DEFAULT 0.0</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="schema-table-wrapper">
+                    <div class="schema-title">TABLE: transaction_log</div>
+                    <table>
+                        <thead><tr><th>COLUMN</th><th>TYPE</th><th>ATTRIBUTES</th></tr></thead>
+                        <tbody>
+                            <tr><td><span class="key">txn_id</span></td><td>INTEGER</td><td>PK, AUTOINCREMENT</td></tr>
+                            <tr><td><span class="key">rfid_id</span></td><td>TEXT</td><td>FOREIGN KEY</td></tr>
+                            <tr><td>timestamp</td><td>TEXT</td><td>DATETIME</td></tr>
+                            <tr><td>amount</td><td>REAL</td><td>NOT NULL</td></tr>
+                            <tr><td>status</td><td>TEXT</td><td>AUTH / DENIED</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+            </div>
+        </div>
+
+        <div class="callout fade-in observe-me">
+            <div class="callout-icon">🛡️</div>
+            <div class="callout-text">
+                <strong style="color: var(--accent-amber); display: block; margin-bottom: 4px; font-family: 'Orbitron';">Security Mechanism: Anti-Passback</strong>
+                A hardcoded 10-second cooldown is enforced in the Python middleware after every successful scan. If a vehicle's tag remains in the reader's field, or is scanned twice rapidly, the system ignores the subsequent reads to prevent double-deduction of the toll fee.
+            </div>
+        </div>
+
+    </div>
+
+    <footer>
+        <div class="footer-text">
+            RFID Automatic Toll Collection System &copy; 2025–2026<br>
+            <span style="color: var(--accent-amber);">Integral University</span> | Bachelor of Computer Applications (BCA) Final Project
+        </div>
+    </footer>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // Scroll Animation Observer for fading in elements
+            const observerOptions = { root: null, rootMargin: '0px', threshold: 0.2 };
+            
+            const observer = new IntersectionObserver((entries, observer) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        entry.target.classList.add('visible');
+                        observer.unobserve(entry.target); 
+                    }
+                });
+            }, observerOptions);
+
+            document.querySelectorAll('.observe-me').forEach(el => {
+                observer.observe(el);
+            });
+
+            // Timeline scroll progress animation
+            const timelineProgress = document.getElementById('timelineProgress');
+            const wrapper = document.getElementById('pipelineWrapper');
+
+            window.addEventListener('scroll', () => {
+                const wrapperRect = wrapper.getBoundingClientRect();
+                const windowHeight = window.innerHeight;
+                
+                // Calculate how far we've scrolled past the top of the wrapper
+                let scrollPercentage = 0;
+                
+                if (wrapperRect.top < windowHeight / 2) {
+                    const totalDistance = wrapperRect.height;
+                    const scrolled = (windowHeight / 2) - wrapperRect.top;
+                    scrollPercentage = (scrolled / totalDistance) * 100;
+                    
+                    // Clamp between 0 and 100
+                    scrollPercentage = Math.max(0, Math.min(100, scrollPercentage));
+                }
+                
+                timelineProgress.style.height = `${scrollPercentage}%`;
+            });
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard - RFID Toll System</title>
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&family=Orbitron:wght@500;700;900&display=swap" rel="stylesheet">
+
+    <style>
+        :root {
+            --bg-primary: #0D0F14;
+            --bg-secondary: #161A24;
+            --bg-tertiary: #1E2433;
+            --accent-amber: #F5A623;
+            --accent-green: #00FF88;
+            --accent-red: #FF3B4E;
+            --accent-blue: #00BFFF;
+            --text-primary: #E8ECF0;
+            --text-muted: #6B7A99;
+            --border: #2A3148;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+            font-family: 'IBM Plex Mono', monospace;
+            display: flex;
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        /* Scanline Overlay */
+        body::before {
+            content: " ";
+            display: block;
+            position: fixed;
+            top: 0;
+            left: 0;
+            bottom: 0;
+            right: 0;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+            z-index: 100;
+            background-size: 100% 2px, 3px 100%;
+            pointer-events: none;
+        }
+
+        /* SIDEBAR */
+        .sidebar {
+            width: 240px;
+            background-color: var(--bg-secondary);
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            position: fixed;
+            height: 100vh;
+            z-index: 10;
+        }
+
+        .logo-container {
+            padding: 32px 24px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .logo {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 1.5rem;
+            color: var(--text-primary);
+            letter-spacing: 2px;
+        }
+
+        .cursor {
+            color: var(--accent-amber);
+            animation: blink 1s step-end infinite;
+        }
+
+        .nav-menu {
+            flex: 1;
+            padding: 24px 0;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .nav-item {
+            padding: 16px 24px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            color: var(--text-muted);
+            text-decoration: none;
+            transition: all 0.3s;
+            border-left: 3px solid transparent;
+            cursor: pointer;
+        }
+
+        .nav-item:hover {
+            background-color: var(--bg-tertiary);
+            color: var(--text-primary);
+        }
+
+        .nav-item.active {
+            border-left-color: var(--accent-amber);
+            color: var(--accent-amber);
+            background-color: rgba(245, 166, 35, 0.05);
+        }
+
+        .operator-badge {
+            padding: 24px;
+            border-top: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 0.8rem;
+        }
+
+        .dot-green {
+            width: 8px;
+            height: 8px;
+            background-color: var(--accent-green);
+            border-radius: 50%;
+            box-shadow: 0 0 8px var(--accent-green);
+        }
+
+        /* MAIN CONTENT */
+        .main-content {
+            margin-left: 240px;
+            flex: 1;
+            padding: 32px;
+            display: flex;
+            flex-direction: column;
+            gap: 24px;
+        }
+
+        /* Topbar */
+        .topbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding-bottom: 16px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .page-title {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 1.8rem;
+            letter-spacing: 2px;
+        }
+
+        .clock {
+            color: var(--accent-amber);
+            font-size: 1.2rem;
+            text-shadow: 0 0 10px rgba(245, 166, 35, 0.3);
+        }
+
+        /* KPI Cards */
+        .kpi-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 24px;
+        }
+
+        .kpi-card {
+            background-color: var(--bg-secondary);
+            border: 1px solid var(--border);
+            padding: 24px;
+            position: relative;
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+
+        .kpi-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 8px 24px rgba(245, 166, 35, 0.05);
+        }
+
+        .kpi-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--text-muted);
+            font-size: 0.8rem;
+            margin-bottom: 16px;
+        }
+
+        .kpi-value {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 2.5rem;
+            color: var(--text-primary);
+        }
+
+        /* Content Grid */
+        .content-grid {
+            display: grid;
+            grid-template-columns: 6fr 4fr;
+            gap: 24px;
+            align-items: start;
+        }
+
+        .panel {
+            background-color: var(--bg-secondary);
+            border: 1px solid var(--border);
+            padding: 24px;
+        }
+
+        .panel-title {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 1.1rem;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        /* Live Feed Table */
+        .rec-dot {
+            width: 10px;
+            height: 10px;
+            background-color: var(--accent-red);
+            border-radius: 50%;
+            animation: pulseRec 1.5s infinite;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-family: 'Barlow Condensed', sans-serif;
+            font-size: 1.1rem;
+            letter-spacing: 0.5px;
+        }
+
+        th {
+            text-align: left;
+            color: var(--text-muted);
+            padding: 12px 8px;
+            border-bottom: 1px solid var(--border);
+            font-weight: 500;
+        }
+
+        td {
+            padding: 12px 8px;
+            border-bottom: 1px solid rgba(42, 49, 72, 0.5);
+        }
+
+        .row-animate {
+            animation: slideDownFade 0.5s ease-out forwards;
+        }
+
+        .badge {
+            padding: 4px 8px;
+            border-radius: 2px;
+            font-size: 0.8rem;
+            font-family: 'IBM Plex Mono', monospace;
+        }
+
+        .badge.auth { background-color: rgba(0, 255, 136, 0.1); color: var(--accent-green); border: 1px solid var(--accent-green); }
+        .badge.denied { background-color: rgba(255, 59, 78, 0.1); color: var(--accent-red); border: 1px solid var(--accent-red); }
+
+        /* Gate Status Panel */
+        .gate-visual {
+            background-color: var(--bg-primary);
+            border: 1px solid var(--border);
+            height: 200px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 20px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .gate-svg {
+            width: 80%;
+            height: 100%;
+        }
+
+        .barrier-arm {
+            transform-origin: 20% 70%;
+            transition: transform 1s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .barrier-arm.open {
+            transform: rotate(-90deg);
+        }
+
+        .btn-simulate {
+            width: 100%;
+            background-color: transparent;
+            border: 1px solid var(--accent-amber);
+            color: var(--accent-amber);
+            padding: 12px;
+            font-family: 'Orbitron', sans-serif;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-bottom: 24px;
+        }
+
+        .btn-simulate:hover {
+            background-color: rgba(245, 166, 35, 0.1);
+        }
+
+        .last-scan-block {
+            background-color: var(--bg-tertiary);
+            padding: 16px;
+            border-left: 3px solid var(--accent-green);
+        }
+
+        .data-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            font-size: 0.9rem;
+        }
+        
+        .data-row:last-child { margin-bottom: 0; }
+        .data-label { color: var(--text-muted); }
+        .data-value { color: var(--text-primary); }
+        .data-value.success { color: var(--accent-green); }
+
+        /* Animations */
+        @keyframes blink { 50% { opacity: 0; } }
+        @keyframes pulseRec {
+            0% { box-shadow: 0 0 0 0 rgba(255, 59, 78, 0.7); }
+            70% { box-shadow: 0 0 0 6px rgba(255, 59, 78, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(255, 59, 78, 0); }
+        }
+        @keyframes slideDownFade {
+            from { opacity: 0; transform: translateY(-10px); background-color: rgba(245, 166, 35, 0.1); }
+            to { opacity: 1; transform: translateY(0); background-color: transparent; }
+        }
+    </style>
+</head>
+<body>
+
+    <nav class="sidebar">
+        <div class="logo-container">
+            <div class="logo">RFID_TOLL<span class="cursor">_</span></div>
+        </div>
+        <div class="nav-menu">
+            <a href="dashboard.html" class="nav-item active">◉ Dashboard</a>
+            <a href="vehicles.html" class="nav-item">☰ Vehicles</a>
+            <a href="logs.html" class="nav-item">✦ Transaction Logs</a>
+            <a href="reports.html" class="nav-item">◎ Reports</a>
+            <a href="login.html" class="nav-item" style="margin-top: auto; color: var(--accent-red);">⊗ Logout</a>
+        </div>
+        <div class="operator-badge">
+            <div class="dot-green"></div>
+            <div>
+                <div style="color: var(--text-primary);">admin</div>
+                <div style="color: var(--text-muted); font-size: 0.7rem;">SYSTEM ONLINE</div>
+            </div>
+        </div>
+    </nav>
+
+    <main class="main-content">
+        
+        <header class="topbar">
+            <h1 class="page-title">DASHBOARD</h1>
+            <div class="clock" id="liveClock">00:00:00</div>
+        </header>
+
+        <section class="kpi-grid">
+            <div class="kpi-card">
+                <div class="kpi-header"><div class="dot-green"></div> TOTAL VEHICLES</div>
+                <div class="kpi-value" id="kpi-vehicles" data-target="5">0</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-header"><div class="dot-green" style="background: var(--accent-amber); box-shadow: none;"></div> TODAY'S TRANSACTIONS</div>
+                <div class="kpi-value" id="kpi-txns" data-target="24">0</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-header"><div class="dot-green" style="background: var(--accent-amber); box-shadow: none;"></div> REVENUE TODAY</div>
+                <div class="kpi-value">₹<span id="kpi-rev" data-target="2400">0</span></div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-header"><div class="dot-green" style="background: var(--accent-red); box-shadow: none;"></div> DENIED ATTEMPTS</div>
+                <div class="kpi-value" id="kpi-denied" data-target="3">0</div>
+            </div>
+        </section>
+
+        <section class="content-grid">
+            
+            <div class="panel">
+                <h2 class="panel-title"><div class="rec-dot"></div> LIVE FEED</h2>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>TXN_ID</th>
+                            <th>RFID_UID</th>
+                            <th>VEHICLE_NO</th>
+                            <th>OWNER</th>
+                            <th>AMOUNT</th>
+                            <th>STATUS</th>
+                        </tr>
+                    </thead>
+                    <tbody id="feedBody">
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="panel">
+                <h2 class="panel-title">GATE STATUS</h2>
+                
+                <div class="gate-visual">
+                    <svg class="gate-svg" viewBox="0 0 200 100">
+                        <rect x="10" y="80" width="180" height="10" fill="#1E2433"/>
+                        <rect x="30" y="40" width="15" height="40" fill="#6B7A99"/>
+                        <circle id="gateLight" cx="37.5" cy="45" r="4" fill="#F5A623"/>
+                        <g class="barrier-arm" id="barrierArm">
+                            <rect x="40" y="65" width="120" height="6" fill="#F5A623"/>
+                            <rect x="60" y="65" width="20" height="6" fill="#161A24"/>
+                            <rect x="100" y="65" width="20" height="6" fill="#161A24"/>
+                            <rect x="140" y="65" width="20" height="6" fill="#161A24"/>
+                        </g>
+                    </svg>
+                </div>
+
+                <button class="btn-simulate" id="simBtn">SIMULATE SCAN</button>
+
+                <div class="last-scan-block" id="scanBlock">
+                    <div style="font-family: 'Orbitron'; font-size: 0.8rem; color: var(--text-muted); margin-bottom: 12px;">LAST SCAN DETAIL</div>
+                    <div class="data-row"><span class="data-label">UID:</span> <span class="data-value" style="font-family: monospace;">8D 20 06 85</span></div>
+                    <div class="data-row"><span class="data-label">VEHICLE:</span> <span class="data-value">MH-04-AB-1234</span></div>
+                    <div class="data-row"><span class="data-label">OWNER:</span> <span class="data-value">Fawwaz Mohd Ubaid</span></div>
+                    <div class="data-row"><span class="data-label">STATUS:</span> <span class="data-value success">AUTHORIZED ✓</span></div>
+                    <div class="data-row"><span class="data-label">BAL AFTER:</span> <span class="data-value">₹850</span></div>
+                </div>
+            </div>
+
+        </section>
+
+    </main>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            
+            // 1. Live Clock
+            const clockEl = document.getElementById('liveClock');
+            setInterval(() => {
+                const now = new Date();
+                clockEl.textContent = now.toLocaleTimeString('en-US', { hour12: false });
+            }, 1000);
+
+            // 2. Count-up Animation for KPIs
+            const counters = document.querySelectorAll('.kpi-value[data-target], span[data-target]');
+            counters.forEach(counter => {
+                const updateCount = () => {
+                    const target = +counter.getAttribute('data-target');
+                    const count = +counter.innerText;
+                    const inc = target / 50; 
+
+                    if (count < target) {
+                        counter.innerText = Math.ceil(count + inc);
+                        setTimeout(updateCount, 30);
+                    } else {
+                        counter.innerText = target;
+                    }
+                };
+                updateCount();
+            });
+
+            // 3. Mock Data for Live Feed
+            const mockData = [
+                { uid: "8D 20 06 85", veh: "MH-04-AB-1234", name: "Fawwaz Mohd Ubaid", amt: "₹100", status: "AUTHORIZED" },
+                { uid: "A1 B2 C3 D4", veh: "UP-32-CD-5678", name: "Ayyub Waqar Faridi", amt: "₹100", status: "AUTHORIZED" },
+                { uid: "F1 E2 D3 C4", veh: "DL-01-XY-9999", name: "Thanaphong T.", amt: "₹0", status: "DENIED" },
+                { uid: "12 34 56 78", veh: "KA-05-PQ-3344", name: "Madani Hassan", amt: "₹100", status: "AUTHORIZED" },
+                { uid: "AA BB CC DD", veh: "TN-11-ZZ-7788", name: "Abdalla Haroun", amt: "₹100", status: "AUTHORIZED" }
+            ];
+
+            const feedBody = document.getElementById('feedBody');
+            let txnCounter = 847;
+
+            function addFeedRow(data, animate = true) {
+                const tr = document.createElement('tr');
+                if(animate) tr.className = 'row-animate';
+                
+                const badgeClass = data.status === 'AUTHORIZED' ? 'badge auth' : 'badge denied';
+                const amtStyle = data.status === 'DENIED' ? 'color: var(--accent-red); text-decoration: line-through;' : 'color: var(--accent-green);';
+
+                tr.innerHTML = `
+                    <td style="color: var(--accent-amber); font-family: 'IBM Plex Mono';">#TXN-${txnCounter++}</td>
+                    <td style="font-family: 'IBM Plex Mono'; color: var(--text-muted);">${data.uid}</td>
+                    <td>${data.veh}</td>
+                    <td>${data.name}</td>
+                    <td style="${amtStyle}">${data.amt}</td>
+                    <td><span class="${badgeClass}">${data.status}</span></td>
+                `;
+
+                feedBody.prepend(tr);
+
+                // Keep only last 8 rows
+                if (feedBody.children.length > 8) {
+                    feedBody.removeChild(feedBody.lastChild);
+                }
+            }
+
+            // Initial populate
+            mockData.forEach(d => addFeedRow(d, false));
+
+            // Simulate incoming data every 4 seconds
+            setInterval(() => {
+                const randomUser = mockData[Math.floor(Math.random() * mockData.length)];
+                addFeedRow(randomUser);
+            }, 4000);
+
+
+            // 4. Gate Simulation Logic
+            const simBtn = document.getElementById('simBtn');
+            const barrierArm = document.getElementById('barrierArm');
+            const gateLight = document.getElementById('gateLight');
+            const scanBlock = document.getElementById('scanBlock');
+            let isOpen = false;
+
+            simBtn.addEventListener('click', () => {
+                if (isOpen) return; // Prevent spam
+
+                // 1. Flash Light Green & Open Gate
+                gateLight.setAttribute('fill', '#00FF88');
+                barrierArm.classList.add('open');
+                scanBlock.style.borderLeftColor = 'var(--accent-green)';
+                isOpen = true;
+
+                // Pick a random success user for the last scan detail
+                const user = mockData.filter(d => d.status === 'AUTHORIZED')[Math.floor(Math.random() * 4)];
+                
+                scanBlock.innerHTML = `
+                    <div style="font-family: 'Orbitron'; font-size: 0.8rem; color: var(--text-muted); margin-bottom: 12px;">LAST SCAN DETAIL</div>
+                    <div class="data-row"><span class="data-label">UID:</span> <span class="data-value" style="font-family: monospace;">${user.uid}</span></div>
+                    <div class="data-row"><span class="data-label">VEHICLE:</span> <span class="data-value">${user.veh}</span></div>
+                    <div class="data-row"><span class="data-label">OWNER:</span> <span class="data-value">${user.name}</span></div>
+                    <div class="data-row"><span class="data-label">STATUS:</span> <span class="data-value success">AUTHORIZED ✓</span></div>
+                    <div class="data-row"><span class="data-label">BAL AFTER:</span> <span class="data-value">₹${Math.floor(Math.random() * 2000) + 100}</span></div>
+                `;
+
+                // 2. Close after 3 seconds
+                setTimeout(() => {
+                    barrierArm.classList.remove('open');
+                    gateLight.setAttribute('fill', '#F5A623');
+                    isOpen = false;
+                }, 3000);
+            });
+        });
+    </script>
+</body>
+</html>

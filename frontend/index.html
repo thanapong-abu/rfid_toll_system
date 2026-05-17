@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RFID Toll Collection System</title>
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&family=Orbitron:wght@500;700;900&display=swap" rel="stylesheet">
+
+    <style>
+        :root {
+            --bg-primary: #0D0F14;
+            --bg-secondary: #161A24;
+            --bg-tertiary: #1E2433;
+            --accent-amber: #F5A623;
+            --accent-green: #00FF88;
+            --accent-red: #FF3B4E;
+            --text-primary: #E8ECF0;
+            --text-muted: #6B7A99;
+            --border: #2A3148;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html { scroll-behavior: smooth; }
+
+        body {
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+            font-family: 'IBM Plex Mono', monospace;
+            overflow-x: hidden;
+            position: relative;
+        }
+
+        /* Scanline Overlay */
+        body::before {
+            content: " "; display: block; position: fixed; top: 0; left: 0; bottom: 0; right: 0;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+            z-index: 100; background-size: 100% 2px, 3px 100%; pointer-events: none;
+        }
+
+        /* Grid Background & Glow */
+        .grid-bg {
+            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+            background-image: linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+            background-size: 40px 40px; z-index: -2;
+        }
+        .glow-orb {
+            position: absolute; border-radius: 50%; filter: blur(120px); opacity: 0.15; z-index: -1; pointer-events: none;
+            background: var(--accent-amber); width: 600px; height: 600px; top: -100px; right: -100px;
+        }
+
+        /* Navbar */
+        .navbar {
+            position: fixed; top: 0; width: 100%; padding: 20px 5%; display: flex; justify-content: space-between; align-items: center;
+            background: rgba(13, 15, 20, 0.8); backdrop-filter: blur(12px); border-bottom: 1px solid var(--border); z-index: 50;
+            animation: slideDown 0.8s ease-out forwards;
+        }
+        .logo { font-family: 'Orbitron', sans-serif; font-size: 1.5rem; letter-spacing: 2px; color: var(--text-primary); text-decoration: none; }
+        .cursor { color: var(--accent-amber); animation: blink 0.8s step-end infinite; }
+        .nav-links { display: flex; gap: 32px; align-items: center; }
+        .nav-links a { color: var(--text-muted); text-decoration: none; font-size: 0.9rem; transition: color 0.3s; }
+        .nav-links a:hover { color: var(--text-primary); }
+        .nav-cta {
+            color: var(--accent-amber) !important; border: 1px solid var(--accent-amber); padding: 8px 16px; font-family: 'Orbitron', sans-serif;
+            transition: all 0.3s !important;
+        }
+        .nav-cta:hover { background: rgba(245, 166, 35, 0.1); box-shadow: 0 0 15px rgba(245, 166, 35, 0.2); }
+
+        /* Typography & Utilities */
+        h1, h2, h3 { font-family: 'Orbitron', sans-serif; }
+        .text-amber { color: var(--accent-amber); }
+        .container { max-width: 1200px; margin: 0 auto; padding: 100px 20px; }
+        .fade-up { opacity: 0; transform: translateY(40px); transition: opacity 0.8s ease-out, transform 0.8s ease-out; }
+        .fade-up.visible { opacity: 1; transform: translateY(0); }
+
+        /* Hero Section */
+        .hero { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; align-items: center; min-height: 100vh; padding-top: 80px; }
+        .hero-title { font-size: 4rem; line-height: 1.1; letter-spacing: 2px; margin-bottom: 24px; text-shadow: 0 0 40px rgba(245,166,35,0.1); }
+        .hero-sub { color: var(--text-muted); font-size: 1.1rem; line-height: 1.6; margin-bottom: 40px; max-width: 90%; }
+        .btn-group { display: flex; gap: 20px; }
+        .btn { padding: 16px 32px; font-family: 'Orbitron', sans-serif; font-size: 1rem; cursor: pointer; text-decoration: none; transition: all 0.3s; font-weight: 700; letter-spacing: 1px; }
+        .btn-primary { background: var(--accent-amber); color: #000; border: none; }
+        .btn-primary:hover { filter: brightness(1.1); box-shadow: 0 0 25px rgba(245, 166, 35, 0.4); }
+        .btn-outline { background: transparent; color: var(--text-primary); border: 1px solid var(--border); }
+        .btn-outline:hover { border-color: var(--text-primary); }
+
+        .stats-row { display: flex; gap: 32px; margin-top: 60px; padding-top: 32px; border-top: 1px solid var(--border); }
+        .stat-item { display: flex; flex-direction: column; gap: 8px; }
+        .stat-val { font-family: 'Orbitron', sans-serif; font-size: 1.5rem; color: var(--text-primary); }
+        .stat-label { font-size: 0.8rem; color: var(--text-muted); letter-spacing: 1px; }
+
+        /* SVG Hero Animation */
+        .hero-visual { position: relative; height: 400px; display: flex; align-items: center; justify-content: center; background: radial-gradient(circle, rgba(30,36,51,0.5) 0%, transparent 70%); }
+        .hero-svg { width: 100%; height: 100%; overflow: visible; }
+        .arm-animate { transform-origin: 30px 240px; animation: liftGate 4s ease-in-out infinite; }
+
+        /* How it Works Section */
+        .section-title { font-size: 2.5rem; text-align: center; margin-bottom: 60px; letter-spacing: 2px; }
+        .flow-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; position: relative; }
+        .flow-card { background: var(--bg-secondary); border: 1px solid var(--border); padding: 40px 32px; text-align: center; position: relative; transition: transform 0.3s, box-shadow 0.3s; z-index: 2; }
+        .flow-card:hover { transform: translateY(-10px); box-shadow: 0 10px 30px rgba(245, 166, 35, 0.08); border-color: var(--accent-amber); }
+        .flow-num { position: absolute; top: -20px; left: 50%; transform: translateX(-50%); background: var(--bg-primary); border: 1px solid var(--accent-amber); color: var(--accent-amber); width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; font-family: 'Orbitron'; font-weight: bold; border-radius: 50%; }
+        .flow-icon { font-size: 3rem; margin-bottom: 24px; color: var(--text-primary); }
+        .flow-card h3 { margin-bottom: 16px; font-size: 1.2rem; }
+        .flow-card p { color: var(--text-muted); font-size: 0.9rem; line-height: 1.6; }
+        .flow-connector { position: absolute; top: 50%; left: 10%; width: 80%; height: 2px; background: dashed 2px var(--border); z-index: 1; }
+
+        /* Tech Stack */
+        .tech-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 24px; }
+        .tech-card { background: var(--bg-secondary); border: 1px solid var(--border); padding: 24px; display: flex; align-items: center; gap: 16px; transition: border-color 0.3s; }
+        .tech-card:hover { border-color: var(--accent-amber); }
+        .tech-card h4 { font-family: 'IBM Plex Mono', monospace; font-size: 1.1rem; color: var(--text-primary); }
+        .tech-card p { color: var(--text-muted); font-size: 0.8rem; margin-top: 4px; }
+
+        /* Team Section */
+        .team-grid { display: flex; flex-wrap: wrap; justify-content: center; gap: 24px; }
+        .team-member { background: var(--bg-secondary); border: 1px solid var(--border); padding: 32px 24px; text-align: center; width: calc(20% - 20px); min-width: 200px; transition: transform 0.3s; }
+        .team-member:hover { transform: translateY(-5px); border-color: var(--accent-blue); }
+        .avatar { width: 80px; height: 80px; background: var(--bg-tertiary); border: 1px solid var(--border); border-radius: 50%; margin: 0 auto 20px auto; display: flex; align-items: center; justify-content: center; font-family: 'Orbitron'; font-size: 1.5rem; color: var(--text-muted); }
+        .team-name { font-size: 1rem; margin-bottom: 8px; color: var(--text-primary); font-family: 'Barlow Condensed', sans-serif; font-weight: 600; letter-spacing: 0.5px; }
+        .team-role { color: var(--accent-blue); font-size: 0.75rem; letter-spacing: 1px; }
+
+        /* Footer */
+        footer { border-top: 1px solid var(--border); padding: 40px 20px; text-align: center; background: var(--bg-secondary); }
+        .footer-text { color: var(--text-muted); font-size: 0.85rem; line-height: 1.8; }
+
+        /* Animations */
+        @keyframes blink { 50% { opacity: 0; } }
+        @keyframes slideDown { from { transform: translateY(-100%); } to { transform: translateY(0); } }
+        @keyframes liftGate {
+            0%, 15% { transform: rotate(0deg); }
+            25%, 75% { transform: rotate(-90deg); }
+            85%, 100% { transform: rotate(0deg); }
+        }
+        @keyframes pulse { 0% { opacity: 0.5; } 50% { opacity: 1; } 100% { opacity: 0.5; } }
+
+        @media (max-width: 900px) {
+            .hero { grid-template-columns: 1fr; text-align: center; padding-top: 120px; }
+            .hero-title { font-size: 3rem; }
+            .hero-sub { margin: 0 auto 40px auto; }
+            .btn-group { justify-content: center; flex-wrap: wrap; }
+            .stats-row { justify-content: center; flex-wrap: wrap; }
+            .flow-grid { grid-template-columns: 1fr; }
+            .flow-connector { display: none; }
+            .team-member { width: calc(50% - 12px); }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="grid-bg"></div>
+    <div class="glow-orb"></div>
+
+    <nav class="navbar">
+        <a href="#" class="logo">RFID_TOLL<span class="cursor">_</span></a>
+        <div class="nav-links">
+            <a href="how-it-works.html">How It Works</a>
+            <a href="#tech">Architecture</a>
+            <a href="#team">Team</a>
+            <a href="admin/login.html" class="nav-cta">Admin Login &rarr;</a>
+        </div>
+    </nav>
+
+    <div class="container">
+        <section class="hero fade-up" style="transition-delay: 100ms;">
+            <div class="hero-content">
+                <h1 class="hero-title">AUTOMATED<br><span class="text-amber">TOLL CONTROL</span></h1>
+                <p class="hero-sub">RFID-Based single-lane toll collection system. Arduino-powered hardware integrated with a Python/Flask backend for zero human error.</p>
+                <div class="btn-group">
+                    <a href="admin/login.html" class="btn btn-primary">VIEW LIVE DEMO</a>
+                    <a href="how-it-works.html" class="btn btn-outline">SYSTEM PIPELINE</a>
+                </div>
+
+                <div class="stats-row">
+                    <div class="stat-item">
+                        <div class="stat-val">95%</div>
+                        <div class="stat-label">READ ACCURACY</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-val"><1.5s</div>
+                        <div class="stat-label">LATENCY</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-val">100%</div>
+                        <div class="stat-label">AUTOMATED</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="hero-visual fade-up" style="transition-delay: 300ms;">
+                <svg class="hero-svg" viewBox="0 0 400 300">
+                    <rect x="0" y="260" width="400" height="40" fill="#1E2433"/>
+                    <rect x="0" y="255" width="400" height="5" fill="#F5A623" opacity="0.3"/>
+                    
+                    <rect x="20" y="100" width="20" height="160" fill="#2A3148"/>
+                    <rect x="15" y="90" width="30" height="10" fill="#6B7A99"/>
+                    
+                    <rect x="50" y="140" width="30" height="40" fill="#161A24" stroke="#00BFFF" stroke-width="2"/>
+                    <circle cx="65" cy="160" r="8" fill="#00BFFF" style="animation: pulse 2s infinite;"/>
+                    
+                    <g class="arm-animate">
+                        <rect x="30" y="235" width="300" height="10" fill="#F5A623"/>
+                        <rect x="60" y="235" width="20" height="10" fill="#161A24"/>
+                        <rect x="110" y="235" width="20" height="10" fill="#161A24"/>
+                        <rect x="160" y="235" width="20" height="10" fill="#161A24"/>
+                        <rect x="210" y="235" width="20" height="10" fill="#161A24"/>
+                        <rect x="260" y="235" width="20" height="10" fill="#161A24"/>
+                        <rect x="310" y="235" width="20" height="10" fill="#161A24"/>
+                    </g>
+                    
+                    <circle cx="30" cy="240" r="12" fill="#6B7A99"/>
+                    <circle cx="30" cy="240" r="4" fill="#0D0F14"/>
+                </svg>
+            </div>
+        </section>
+
+        <section class="container" style="padding-top: 40px;">
+            <h2 class="section-title fade-up">HOW IT WORKS</h2>
+            <div class="flow-connector"></div>
+            <div class="flow-grid">
+                <div class="flow-card fade-up" style="transition-delay: 100ms;">
+                    <div class="flow-num">01</div>
+                    <div class="flow-icon">📡</div>
+                    <h3>RFID Detected</h3>
+                    <p>Approaching vehicle's unique tag is scanned by the RC522 module via electromagnetic field.</p>
+                </div>
+                <div class="flow-card fade-up" style="transition-delay: 200ms;">
+                    <div class="flow-num">02</div>
+                    <div class="flow-icon">🗄️</div>
+                    <h3>Database Validated</h3>
+                    <p>Python middleware securely cross-references the UID with the local SQLite database to verify funds.</p>
+                </div>
+                <div class="flow-card fade-up" style="transition-delay: 300ms;">
+                    <div class="flow-num">03</div>
+                    <div class="flow-icon">🚦</div>
+                    <h3>Gate Actuates</h3>
+                    <p>Upon authorization, the SG90 servo lifts the barrier instantly and the transaction is permanently logged.</p>
+                </div>
+            </div>
+        </section>
+
+        <section id="tech" class="container" style="padding-top: 40px;">
+            <h2 class="section-title fade-up">SYSTEM ARCHITECTURE</h2>
+            <div class="tech-grid">
+                <div class="tech-card fade-up" style="transition-delay: 50ms;">
+                    <div style="color: var(--accent-amber); font-size: 1.5rem;">⚙️</div>
+                    <div><h4>Arduino Uno</h4><p>Core embedded controller</p></div>
+                </div>
+                <div class="tech-card fade-up" style="transition-delay: 100ms;">
+                    <div style="color: var(--accent-blue); font-size: 1.5rem;">💳</div>
+                    <div><h4>RC522 Module</h4><p>13.56MHz RFID Reader</p></div>
+                </div>
+                <div class="tech-card fade-up" style="transition-delay: 150ms;">
+                    <div style="color: var(--accent-green); font-size: 1.5rem;">🦾</div>
+                    <div><h4>SG90 Servo</h4><p>Physical barrier actuation</p></div>
+                </div>
+                <div class="tech-card fade-up" style="transition-delay: 200ms;">
+                    <div style="color: var(--text-muted); font-size: 1.5rem;">💽</div>
+                    <div><h4>SQLite DB</h4><p>Local relational data storage</p></div>
+                </div>
+                <div class="tech-card fade-up" style="transition-delay: 250ms;">
+                    <div style="color: var(--text-primary); font-size: 1.5rem;">🐍</div>
+                    <div><h4>Python Serial</h4><p>Hardware-to-software bridge</p></div>
+                </div>
+                <div class="tech-card fade-up" style="transition-delay: 300ms;">
+                    <div style="color: var(--accent-amber); font-size: 1.5rem;">🌐</div>
+                    <div><h4>HTML/JS UI</h4><p>Responsive admin terminal</p></div>
+                </div>
+            </div>
+        </section>
+
+        <section id="team" class="container" style="padding-top: 40px; padding-bottom: 80px;">
+            <h2 class="section-title fade-up">DEVELOPMENT TEAM</h2>
+            <div class="team-grid">
+                <div class="team-member fade-up" style="transition-delay: 100ms;">
+                    <div class="avatar">TT</div>
+                    <div class="team-name">1. Thanaphong Tuangsapsakun</div>
+                    <div class="team-role">Developer</div>
+                </div>
+                <div class="team-member fade-up" style="transition-delay: 200ms;">
+                    <div class="avatar">FM</div>
+                    <div class="team-name">2. Fawwaz Mohd Ubaid</div>
+                    <div class="team-role">Developer</div>
+                </div>
+                <div class="team-member fade-up" style="transition-delay: 300ms;">
+                    <div class="avatar">AW</div>
+                    <div class="team-name">3. Ayyub Waqar Faridi</div>
+                    <div class="team-role">Developer</div>
+                </div>
+                <div class="team-member fade-up" style="transition-delay: 400ms;">
+                    <div class="avatar">MH</div>
+                    <div class="team-name">4. Madani Hassan Mohamed Mustafa</div>
+                    <div class="team-role">Developer</div>
+                </div>
+                <div class="team-member fade-up" style="transition-delay: 500ms;">
+                    <div class="avatar">AH</div>
+                    <div class="team-name">5. Abdalla Haroun Abdalla Abaker</div>
+                    <div class="team-role">Developer</div>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <footer>
+        <div class="footer-text">
+            RFID Automatic Toll Collection System &copy; 2025–2026<br>
+            <span class="text-amber">Integral University</span> | Bachelor of Computer Applications (BCA) Final Project
+        </div>
+    </footer>
+
+    <script>
+        // Intersection Observer for scroll animations
+        document.addEventListener('DOMContentLoaded', () => {
+            const observerOptions = { root: null, rootMargin: '0px', threshold: 0.15 };
+            
+            const observer = new IntersectionObserver((entries, observer) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        entry.target.classList.add('visible');
+                        observer.unobserve(entry.target); // Animate only once
+                    }
+                });
+            }, observerOptions);
+
+            document.querySelectorAll('.fade-up').forEach(el => {
+                observer.observe(el);
+            });
+        });
+    </script>
+</body>
+</html>

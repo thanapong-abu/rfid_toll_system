@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reports & Analytics - RFID Toll System</title>
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&family=Orbitron:wght@500;700;900&display=swap" rel="stylesheet">
+    
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <style>
+        :root {
+            --bg-primary: #0D0F14;
+            --bg-secondary: #161A24;
+            --bg-tertiary: #1E2433;
+            --accent-amber: #F5A623;
+            --accent-green: #00FF88;
+            --accent-red: #FF3B4E;
+            --accent-blue: #00BFFF;
+            --text-primary: #E8ECF0;
+            --text-muted: #6B7A99;
+            --border: #2A3148;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+            font-family: 'IBM Plex Mono', monospace;
+            display: flex;
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        /* Scanline Overlay */
+        body::before {
+            content: " "; display: block; position: fixed; top: 0; left: 0; bottom: 0; right: 0;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+            z-index: 100; background-size: 100% 2px, 3px 100%; pointer-events: none;
+        }
+
+        /* SIDEBAR */
+        .sidebar {
+            width: 240px; background-color: var(--bg-secondary); border-right: 1px solid var(--border);
+            display: flex; flex-direction: column; position: fixed; height: 100vh; z-index: 10;
+        }
+        .logo-container { padding: 32px 24px; border-bottom: 1px solid var(--border); }
+        .logo { font-family: 'Orbitron', sans-serif; font-size: 1.5rem; letter-spacing: 2px; }
+        .cursor { color: var(--accent-amber); animation: blink 1s step-end infinite; }
+        .nav-menu { flex: 1; padding: 24px 0; list-style: none; }
+        .nav-item {
+            padding: 16px 24px; display: flex; align-items: center; gap: 12px;
+            color: var(--text-muted); text-decoration: none; transition: all 0.3s;
+            border-left: 3px solid transparent; cursor: pointer;
+        }
+        .nav-item:hover { background-color: var(--bg-tertiary); color: var(--text-primary); }
+        .nav-item.active { border-left-color: var(--accent-amber); color: var(--accent-amber); background-color: rgba(245, 166, 35, 0.05); }
+        .operator-badge { padding: 24px; border-top: 1px solid var(--border); display: flex; align-items: center; gap: 12px; font-size: 0.8rem; }
+        .dot-green { width: 8px; height: 8px; background-color: var(--accent-green); border-radius: 50%; box-shadow: 0 0 8px var(--accent-green); }
+
+        /* MAIN CONTENT */
+        .main-content {
+            margin-left: 240px; flex: 1; padding: 32px; display: flex; flex-direction: column; gap: 24px;
+        }
+
+        .topbar { display: flex; justify-content: space-between; align-items: center; padding-bottom: 16px; border-bottom: 1px solid var(--border); }
+        .page-title { font-family: 'Orbitron', sans-serif; font-size: 1.8rem; letter-spacing: 2px; }
+        
+        .date-select {
+            background-color: var(--bg-secondary); border: 1px solid var(--accent-amber); color: var(--accent-amber);
+            padding: 8px 16px; font-family: 'Orbitron', sans-serif; outline: none; cursor: pointer;
+        }
+
+        /* KPI Cards */
+        .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 24px; }
+        .kpi-card { background-color: var(--bg-secondary); border: 1px solid var(--border); padding: 24px; }
+        .kpi-header { color: var(--text-muted); font-size: 0.8rem; margin-bottom: 12px; display: flex; gap: 8px; align-items: center; }
+        .kpi-value { font-family: 'Orbitron', sans-serif; font-size: 2rem; color: var(--text-primary); }
+        
+        /* Panels */
+        .panel { background-color: var(--bg-secondary); border: 1px solid var(--border); padding: 24px; position: relative; }
+        .panel-title { font-family: 'Orbitron', sans-serif; font-size: 1.1rem; margin-bottom: 24px; color: var(--text-muted); }
+        
+        .chart-container { position: relative; height: 300px; width: 100%; opacity: 0; transform: translateY(20px); transition: all 1.2s ease-out; }
+        .chart-container.visible { opacity: 1; transform: translateY(0); }
+        
+        .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+        
+        /* Doughnut Center Text */
+        .doughnut-center {
+            position: absolute; top: 55%; left: 50%; transform: translate(-50%, -50%);
+            text-align: center; font-family: 'Orbitron'; pointer-events: none;
+        }
+        .doughnut-val { font-size: 1.8rem; color: var(--accent-amber); }
+        .doughnut-label { font-size: 0.8rem; color: var(--text-muted); letter-spacing: 1px; }
+
+        /* Heatmap Grid */
+        .heatmap-wrapper { overflow-x: auto; opacity: 0; transition: opacity 1s; }
+        .heatmap-wrapper.visible { opacity: 1; }
+        .heatmap { display: grid; grid-template-columns: 60px repeat(24, 1fr); gap: 2px; }
+        .hm-cell { height: 24px; background-color: var(--accent-amber); border-radius: 2px; position: relative; cursor: pointer; }
+        .hm-cell:hover::after {
+            content: attr(data-tooltip); position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%);
+            background: #000; color: #fff; padding: 4px 8px; font-size: 0.7rem; white-space: nowrap; border: 1px solid var(--accent-amber);
+            z-index: 10; margin-bottom: 4px; pointer-events: none;
+        }
+        .hm-label { font-size: 0.75rem; color: var(--text-muted); text-align: right; padding-right: 8px; align-self: center; }
+        .hm-col-label { font-size: 0.7rem; color: var(--text-muted); text-align: center; margin-bottom: 4px; }
+
+        /* Data Table */
+        table { width: 100%; border-collapse: collapse; font-family: 'Barlow Condensed', sans-serif; font-size: 1.1rem; letter-spacing: 0.5px; }
+        th { text-align: left; color: var(--text-muted); padding: 12px 8px; border-bottom: 1px solid var(--border); font-weight: 500; }
+        td { padding: 12px 8px; border-bottom: 1px solid rgba(42, 49, 72, 0.5); }
+        .totals-row { border-bottom: 2px solid var(--accent-amber); font-weight: bold; background: rgba(245, 166, 35, 0.05); }
+
+        @keyframes blink { 50% { opacity: 0; } }
+    </style>
+</head>
+<body>
+
+    <nav class="sidebar">
+        <div class="logo-container">
+            <div class="logo">RFID_TOLL<span class="cursor">_</span></div>
+        </div>
+        <ul class="nav-menu">
+            <li class="nav-item" onclick="window.location.href='dashboard.html'">◉ Dashboard</li>
+            <li class="nav-item" onclick="window.location.href='vehicles.html'">☰ Vehicles</li>
+            <li class="nav-item" onclick="window.location.href='logs.html'">✦ Transaction Logs</li>
+            <li class="nav-item active" onclick="window.location.href='reports.html'">◎ Reports</li>
+            <li class="nav-item" style="margin-top: auto; color: var(--accent-red);" onclick="window.location.href='login.html'">⊗ Logout</li>
+        </ul>
+        <div class="operator-badge">
+            <div class="dot-green"></div>
+            <div>
+                <div style="color: var(--text-primary);">admin</div>
+                <div style="color: var(--text-muted); font-size: 0.7rem;">SYSTEM ONLINE</div>
+            </div>
+        </div>
+    </nav>
+
+    <main class="main-content">
+        
+        <header class="topbar">
+            <h1 class="page-title">REPORTS & ANALYTICS</h1>
+            <select class="date-select">
+                <option>Last 7 Days ▾</option>
+                <option>This Month ▾</option>
+                <option>All Time ▾</option>
+            </select>
+        </header>
+
+        <section class="kpi-grid">
+            <div class="kpi-card">
+                <div class="kpi-header"><div class="dot-green" style="background:var(--accent-blue);box-shadow:none;"></div> TOTAL REVENUE (7D)</div>
+                <div class="kpi-value">₹<span data-target="24500">0</span></div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-header"><div class="dot-green" style="background:var(--accent-blue);box-shadow:none;"></div> AVG TXNS / DAY</div>
+                <div class="kpi-value"><span data-target="34.2" data-decimal="true">0</span></div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-header"><div class="dot-green" style="background:var(--accent-amber);box-shadow:none;"></div> PEAK HOUR</div>
+                <div class="kpi-value" style="font-size: 1.6rem;">08:00–09:00</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-header"><div class="dot-green"></div> SUCCESS RATE</div>
+                <div class="kpi-value"><span data-target="94.8" data-decimal="true">0</span>%</div>
+            </div>
+        </section>
+
+        <div class="panel">
+            <div class="panel-title">DAILY REVENUE — Last 7 Days</div>
+            <div class="chart-container" id="chart1">
+                <canvas id="revenueChart"></canvas>
+            </div>
+        </div>
+
+        <div class="two-col">
+            <div class="panel">
+                <div class="panel-title">TRANSACTIONS BY VEHICLE</div>
+                <div class="chart-container" id="chart2">
+                    <canvas id="vehicleBarChart"></canvas>
+                </div>
+            </div>
+            
+            <div class="panel">
+                <div class="panel-title">SUCCESS vs DENIED RATIO</div>
+                <div class="chart-container" id="chart3" style="display:flex; justify-content:center;">
+                    <canvas id="ratioChart" style="max-height: 280px;"></canvas>
+                    <div class="doughnut-center">
+                        <div class="doughnut-val">94.8%</div>
+                        <div class="doughnut-label">SUCCESS</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="panel">
+            <div class="panel-title">PEAK TRAFFIC HOURS (Vehicles / Hr)</div>
+            <div class="heatmap-wrapper" id="heatmapWrapper">
+                <div class="heatmap" id="heatmapGrid">
+                </div>
+            </div>
+        </div>
+
+        <div class="panel">
+            <div class="panel-title">PER-VEHICLE SUMMARY</div>
+            <table>
+                <thead>
+                    <tr>
+                        <th>VEHICLE</th>
+                        <th>OWNER</th>
+                        <th>TOTAL TRIPS</th>
+                        <th>TOTAL SPENT</th>
+                        <th>AVG TRIP (₹)</th>
+                        <th>LAST SEEN</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr><td>MH-04-AB-1234</td><td>Fawwaz Mohd Ubaid</td><td>145</td><td style="color:var(--accent-green)">₹14,500</td><td>100</td><td>2026-04-16</td></tr>
+                    <tr><td>UP-32-CD-5678</td><td>Ayyub Waqar Faridi</td><td>203</td><td style="color:var(--accent-green)">₹20,300</td><td>100</td><td>2026-04-15</td></tr>
+                    <tr><td>DL-01-XY-9999</td><td>Thanaphong T.</td><td>89</td><td style="color:var(--accent-green)">₹8,900</td><td>100</td><td>2026-04-14</td></tr>
+                    <tr><td>KA-05-PQ-3344</td><td>Madani Hassan</td><td>312</td><td style="color:var(--accent-green)">₹31,200</td><td>100</td><td>2026-04-16</td></tr>
+                    <tr><td>TN-11-ZZ-7788</td><td>Abdalla Haroun</td><td>98</td><td style="color:var(--accent-green)">₹9,800</td><td>100</td><td>2026-04-16</td></tr>
+                    <tr class="totals-row">
+                        <td>TOTALS</td><td>--</td><td style="color:var(--accent-amber)">847</td><td style="color:var(--accent-amber)">₹84,700</td><td>100</td><td>--</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+    </main>
+
+    <script>
+        // Global Chart Defaults
+        Chart.defaults.color = '#6B7A99';
+        Chart.defaults.font.family = "'IBM Plex Mono', monospace";
+        Chart.defaults.borderColor = '#2A3148';
+
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.classList.add('visible');
+                    
+                    if(entry.target.id === 'chart1' && !window.revChartInit) { initRevenueChart(); window.revChartInit = true; }
+                    if(entry.target.id === 'chart2' && !window.barChartInit) { initVehicleBarChart(); window.barChartInit = true; }
+                    if(entry.target.id === 'chart3' && !window.doughnutInit) { initRatioChart(); window.doughnutInit = true; }
+                    if(entry.target.id === 'heatmapWrapper' && !window.heatInit) { initHeatmap(); window.heatInit = true; }
+                }
+            });
+        }, { threshold: 0.2 });
+
+        document.querySelectorAll('.chart-container, .heatmap-wrapper').forEach(el => observer.observe(el));
+
+        function initRevenueChart() {
+            const ctx = document.getElementById('revenueChart').getContext('2d');
+            
+            let gradient = ctx.createLinearGradient(0, 0, 0, 300);
+            gradient.addColorStop(0, 'rgba(245, 166, 35, 0.4)');
+            gradient.addColorStop(1, 'rgba(245, 166, 35, 0.0)');
+
+            new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: ['Apr 10', 'Apr 11', 'Apr 12', 'Apr 13', 'Apr 14', 'Apr 15', 'Apr 16'],
+                    datasets: [{
+                        label: 'Revenue (₹)',
+                        data: [2100, 3400, 2800, 4100, 3700, 2900, 3500],
+                        borderColor: '#F5A623',
+                        backgroundColor: gradient,
+                        borderWidth: 2,
+                        pointBackgroundColor: '#161A24',
+                        pointBorderColor: '#F5A623',
+                        pointHoverBackgroundColor: '#F5A623',
+                        fill: true,
+                        tension: 0.3
+                    }]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        y: { beginAtZero: true, grid: { color: '#2A3148' } },
+                        x: { grid: { display: false } }
+                    }
+                }
+            });
+        }
+
+        function initVehicleBarChart() {
+            const ctx = document.getElementById('vehicleBarChart').getContext('2d');
+            new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: ['MH-04...', 'UP-32...', 'DL-01...', 'KA-05...', 'TN-11...'],
+                    datasets: [{
+                        label: 'Total Trips',
+                        data: [145, 203, 89, 312, 98],
+                        backgroundColor: 'rgba(245, 166, 35, 0.8)',
+                        borderColor: '#F5A623',
+                        borderWidth: 1,
+                        borderRadius: 2
+                    }]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        y: { beginAtZero: true, grid: { color: '#2A3148' } },
+                        x: { grid: { display: false } }
+                    }
+                }
+            });
+        }
+
+        function initRatioChart() {
+            const ctx = document.getElementById('ratioChart').getContext('2d');
+            new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Authorized', 'Denied'],
+                    datasets: [{
+                        data: [94.8, 5.2],
+                        backgroundColor: ['#F5A623', '#FF3B4E'],
+                        borderWidth: 0,
+                        hoverOffset: 4
+                    }]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false, cutout: '75%',
+                    plugins: {
+                        legend: { position: 'bottom', labels: { color: '#E8ECF0' } }
+                    }
+                }
+            });
+        }
+
+        function initHeatmap() {
+            const grid = document.getElementById('heatmapGrid');
+            const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+            
+            grid.innerHTML += `<div></div>`; 
+            for(let h=0; h<24; h++) {
+                grid.innerHTML += `<div class="hm-col-label">${h.toString().padStart(2, '0')}</div>`;
+            }
+
+            days.forEach(day => {
+                grid.innerHTML += `<div class="hm-label">${day}</div>`;
+                for(let h=0; h<24; h++) {
+                    let base = (h>7 && h<10) || (h>16 && h<19) ? Math.random() * 0.8 + 0.2 : Math.random() * 0.3;
+                    let vehicles = Math.floor(base * 50);
+                    let opacity = Math.max(0.05, base); 
+                    
+                    const cell = document.createElement('div');
+                    cell.className = 'hm-cell';
+                    cell.style.opacity = 0; 
+                    cell.style.backgroundColor = `rgba(245, 166, 35, ${opacity})`;
+                    cell.setAttribute('data-tooltip', `${day} ${h}:00 — ${vehicles} txns`);
+                    
+                    setTimeout(() => {
+                        cell.style.transition = 'opacity 0.5s ease';
+                        cell.style.opacity = 1;
+                    }, Math.random() * 1000 + 500);
+
+                    grid.appendChild(cell);
+                }
+            });
+        }
+
+        const counters = document.querySelectorAll('.kpi-value span');
+        counters.forEach(counter => {
+            const isDecimal = counter.getAttribute('data-decimal') === 'true';
+            const target = parseFloat(counter.getAttribute('data-target'));
+            let count = 0;
+            const inc = target / 40; 
+            
+            const updateCount = () => {
+                if (count < target) {
+                    count += inc;
+                    counter.innerText = isDecimal ? (count).toFixed(1) : Math.ceil(count).toLocaleString('en-IN');
+                    setTimeout(updateCount, 30);
+                } else {
+                    counter.innerText = isDecimal ? target.toFixed(1) : target.toLocaleString('en-IN');
+                }
+            };
+            updateCount();
+        });
+
+    </script>
+</body>
+</html>
