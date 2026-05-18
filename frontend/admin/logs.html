@@ -241,42 +241,16 @@
     </div>
 
     <script>
-        // 1. Generate Mock Data
-        const mockVehicles = [
-            { uid: "8D 20 06 85", veh: "MH-04-AB-1234", name: "Fawwaz Mohd Ubaid" },
-            { uid: "A1 B2 C3 D4", veh: "UP-32-CD-5678", name: "Ayyub Waqar Faridi" },
-            { uid: "F1 E2 D3 C4", veh: "DL-01-XY-9999", name: "Thanaphong T." },
-            { uid: "12 34 56 78", veh: "KA-05-PQ-3344", name: "Madani Hassan" },
-            { uid: "AA BB CC DD", veh: "TN-11-ZZ-7788", name: "Abdalla Haroun" }
-        ];
+       // 1. Set the Render API URL and Security Key
+        // IMPORTANT: Replace the URL below with your actual Render URL
+        const BASE_URL = "https://rfid-toll-system.onrender.com";
+        const API_KEY = "toll2026";
 
         let logsData = [];
-        let baseTxnId = 832;
-        
-        for(let i = 0; i < 15; i++) {
-            const v = mockVehicles[Math.floor(Math.random() * mockVehicles.length)];
-            const isDenied = Math.random() > 0.8; 
-            
-            const date = new Date(2026, 3, 16, 14, 30, 0); 
-            date.setHours(date.getHours() - (i * 13)); 
-
-            logsData.push({
-                id: `TXN-${baseTxnId + (15 - i)}`,
-                timestamp: date.toISOString().slice(0,19).replace('T', ' '),
-                uid: v.uid,
-                veh: v.veh,
-                name: v.name,
-                status: isDenied ? 'DENIED' : 'AUTHORIZED',
-                amount: isDenied ? 0 : 100,
-                balBefore: isDenied ? (Math.floor(Math.random() * 50)) : (Math.floor(Math.random() * 1000) + 100), 
-                responseTime: (Math.random() * 0.8 + 0.2).toFixed(2) 
-            });
-        }
-
         let currentFilterStatus = 'ALL';
         let currentPage = 1;
         const itemsPerPage = 10;
-        let filteredData = [...logsData];
+        let filteredData = [];
 
         const tbody = document.getElementById('logTableBody');
         const paginationContainer = document.getElementById('paginationControls');
@@ -286,9 +260,54 @@
         const drawer = document.getElementById('logDrawer');
         const mainContent = document.getElementById('mainContent');
 
+        // 2. Fetch real transaction logs from Backend
+        function fetchLogs() {
+            tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding: 20px;">Loading data from database...</td></tr>';
+            
+            fetch(`${BASE_URL}/api/transactions?limit=500`, {
+                method: 'GET',
+                headers: { 'X-API-Key': API_KEY }
+            })
+            .then(res => res.json())
+            .then(result => {
+                if (result.success && result.data) {
+                    // Map the database format to our frontend format
+                    logsData = result.data.map(txn => ({
+                        id: txn.txn_id,
+                        timestamp: txn.timestamp,
+                        uid: txn.rfid_id,
+                        veh: txn.vehicle_no || 'Unknown',
+                        name: txn.owner_name || 'Unknown',
+                        status: txn.status,
+                        amount: txn.amount,
+                        reason: txn.reason || '',
+                        responseTime: (Math.random() * 0.5 + 0.1).toFixed(2) // Simulated ping
+                    }));
+                    // After mapping, apply any active filters and render
+                    applyFilters();
+                } else {
+                    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color: var(--accent-red);">No transactions found.</td></tr>';
+                }
+            })
+            .catch(err => {
+                console.error("Error fetching logs:", err);
+                tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color: var(--accent-red);">Connection error with Render server.</td></tr>';
+            });
+        }
+
+        // 3. Filter Logic
+        function applyFilters() {
+            filteredData = logsData.filter(log => {
+                if(currentFilterStatus !== 'ALL' && log.status !== currentFilterStatus) return false;
+                return true;
+            });
+            currentPage = 1;
+            renderTable();
+        }
+
+        // 4. Render the Table Rows
         function renderTable() {
             tbody.innerHTML = '';
-            
             const startIndex = (currentPage - 1) * itemsPerPage;
             const endIndex = startIndex + itemsPerPage;
             const pageData = filteredData.slice(startIndex, endIndex);
@@ -302,7 +321,7 @@
                 const badgeClass = isAuth ? 'badge auth' : 'badge denied';
 
                 tr.innerHTML = `
-                    <td class="txn-id">#${log.id}</td>
+                    <td class="txn-id">#TXN-${log.id}</td>
                     <td class="datetime">${log.timestamp}</td>
                     <td class="txn-id" style="color: var(--text-primary)">${log.uid}</td>
                     <td>${log.veh}</td>
@@ -310,19 +329,17 @@
                     <td>${amtDisplay}</td>
                     <td><span class="${badgeClass}">${log.status}</span></td>
                 `;
-
                 tr.addEventListener('click', () => openDrawer(log));
                 tbody.appendChild(tr);
             });
-
             updateSummary();
             renderPagination();
         }
 
+        // 5. Pagination Logic
         function renderPagination() {
             paginationContainer.innerHTML = '';
             const totalPages = Math.ceil(filteredData.length / itemsPerPage);
-            
             if(totalPages === 0) return;
 
             const prevBtn = document.createElement('button');
@@ -348,6 +365,7 @@
             paginationContainer.appendChild(nextBtn);
         }
 
+        // 6. Update Top Summary Strip
         function updateSummary() {
             const txns = filteredData.length;
             const rev = filteredData.reduce((sum, log) => sum + log.amount, 0);
@@ -358,34 +376,29 @@
             sumDenied.innerText = denied;
         }
 
+        // Event Listeners for Filter Buttons
         const pillBtns = document.querySelectorAll('.pill-btn');
         pillBtns.forEach(btn => {
             btn.addEventListener('click', (e) => {
                 pillBtns.forEach(b => b.classList.remove('active'));
                 e.target.classList.add('active');
                 currentFilterStatus = e.target.getAttribute('data-status');
+                applyFilters(); 
             });
         });
 
-        document.getElementById('btnApply').addEventListener('click', () => {
-            filteredData = logsData.filter(log => {
-                if(currentFilterStatus !== 'ALL' && log.status !== currentFilterStatus) return false;
-                return true;
-            });
-            currentPage = 1;
-            renderTable();
-        });
+        document.getElementById('btnApply').addEventListener('click', applyFilters);
 
+        // Drawer Slide-out Logic
         function openDrawer(log) {
             const isAuth = log.status === 'AUTHORIZED';
-            const balAfter = isAuth ? log.balBefore - log.amount : log.balBefore;
             const statusColor = isAuth ? 'var(--accent-green)' : 'var(--accent-red)';
-            const reason = isAuth ? 'SUCCESS' : 'INSUFFICIENT FUNDS';
+            const reason = log.reason || (isAuth ? 'SUCCESS' : 'DENIED');
 
             document.getElementById('drawerContent').innerHTML = `
                 <div class="detail-group">
                     <div class="detail-label">TRANSACTION ID</div>
-                    <div class="detail-value monospace" style="color: var(--accent-amber)">#${log.id}</div>
+                    <div class="detail-value monospace" style="color: var(--accent-amber)">#TXN-${log.id}</div>
                 </div>
                 <div class="detail-group">
                     <div class="detail-label">TIMESTAMP</div>
@@ -403,13 +416,11 @@
                 <div class="detail-group">
                     <div class="detail-label">STATUS & REASON</div>
                     <div class="detail-value" style="color: ${statusColor}; font-family: 'Orbitron'">${log.status}</div>
-                    <div class="detail-value" style="color: var(--text-muted); font-size: 0.9rem;">Reason: ${reason}</div>
+                    <div class="detail-value" style="color: var(--text-muted); font-size: 0.9rem;">System Log: ${reason}</div>
                 </div>
                 <div class="detail-group">
                     <div class="detail-label">FINANCIALS</div>
                     <div class="detail-value">Toll Amount: ₹${log.amount}</div>
-                    <div class="detail-value" style="font-size: 0.9rem; color: var(--text-muted); margin-top: 8px;">Balance Before: ₹${log.balBefore}</div>
-                    <div class="detail-value" style="font-size: 0.9rem; color: var(--text-muted);">Balance After: ₹${balAfter}</div>
                 </div>
                 <div class="detail-group" style="border: none;">
                     <div class="detail-label">SYSTEM METRICS</div>
@@ -426,6 +437,7 @@
             mainContent.style.filter = 'none';
         });
 
+        // Export Button Animation (Mock)
         document.getElementById('btnExport').addEventListener('click', function() {
             const originalText = this.innerText;
             this.innerText = 'EXPORTING...';
@@ -444,7 +456,8 @@
             }, 800);
         });
 
-        renderTable();
+        // Start by fetching data!
+        fetchLogs();
     </script>
 </body>
 </html>

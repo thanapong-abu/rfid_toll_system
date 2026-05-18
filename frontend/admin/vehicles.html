@@ -262,14 +262,13 @@
     </div>
 
     <script>
-        // Mock Data based on the project parameters
-        let vehicles = [
-            { id: 1, uid: "8D 20 06 85", veh: "MH-04-AB-1234", name: "Fawwaz Mohd Ubaid", bal: 850, status: "ACTIVE" },
-            { id: 2, uid: "A1 B2 C3 D4", veh: "UP-32-CD-5678", name: "Ayyub Waqar Faridi", bal: 1200, status: "ACTIVE" },
-            { id: 3, uid: "F1 E2 D3 C4", veh: "DL-01-XY-9999", name: "Thanaphong T.", bal: 200, status: "ACTIVE" },
-            { id: 4, uid: "12 34 56 78", veh: "KA-05-PQ-3344", name: "Madani Hassan", bal: 3000, status: "ACTIVE" },
-            { id: 5, uid: "AA BB CC DD", veh: "TN-11-ZZ-7788", name: "Abdalla Haroun", bal: 560, status: "ACTIVE" }
-        ];
+       // 1. Set the Render API URL and Security Key
+        // IMPORTANT: Replace the URL below with your actual Render URL
+        const API_URL = "https://rfid-toll-system.onrender.com/api/vehicles";
+        const API_KEY = "toll2026";
+
+        // 2. Create an empty array to store data from the server
+        let vehicles = [];
 
         const tbody = document.getElementById('vehicleTableBody');
         const statsBar = document.getElementById('statsBar');
@@ -278,6 +277,43 @@
         const registerModal = document.getElementById('registerModal');
         const topupModal = document.getElementById('topupModal');
 
+        // 3. Fetch real vehicle data from the Backend
+        function fetchVehicles() {
+            // Show a loading message while fetching data
+            tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding: 20px;">Loading data from database...</td></tr>';
+            
+            fetch(API_URL, {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-API-Key': API_KEY // Send the API key for authorization
+                }
+            })
+            .then(response => response.json())
+            .then(result => {
+                if (result.success && result.data) {
+                    // Map database fields to match the frontend variables exactly
+                    vehicles = result.data.map((v, index) => ({
+                        id: index + 1,                 // Use array index + 1 as row ID
+                        uid: v.rfid_id,                // Matches DB column: rfid_id
+                        veh: v.vehicle_no,             // Matches DB column: vehicle_no
+                        name: v.owner_name,            // Matches DB column: owner_name
+                        bal: v.wallet_bal,             // Matches DB column: wallet_bal
+                        status: 'ACTIVE'               // Default status for the UI
+                    }));
+                    // Render the table once data is mapped
+                    renderTable();
+                } else {
+                    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color: var(--accent-red);">No data found or failed to load.</td></tr>';
+                }
+            })
+            .catch(error => {
+                console.error('Error fetching vehicles:', error);
+                tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color: var(--accent-red);">Connection error with Render server.</td></tr>';
+            });
+        }
+
+        // 4. Render Table Function
         function renderTable() {
             const searchTerm = searchInput.value.toLowerCase();
             const filterVal = filterSelect.value;
@@ -355,6 +391,8 @@
             
             const index = vehicles.findIndex(v => v.uid === uid);
             if(index !== -1 && amount > 0) {
+                // Note: Currently updates UI only. 
+                // Will need a POST request to top-up API to save in database.
                 vehicles[index].bal += amount;
                 closeModals();
                 renderTable();
@@ -371,7 +409,8 @@
             }
         }
 
-        renderTable();
+        // 5. Trigger the fetch function as soon as the page loads
+        fetchVehicles();
     </script>
 </body>
 </html>

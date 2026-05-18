@@ -236,11 +236,68 @@
     </main>
 
     <script>
+        // ==========================================
+        // REAL BACKEND INTEGRATION FOR REPORTS
+        // ==========================================
+
+        // 1. API Setup
+        // IMPORTANT: Replace this URL with your actual Render URL
+        const BASE_URL = "https://rfid-toll-system.onrender.com"; 
+        const API_KEY = "toll2026";
+
         // Global Chart Defaults
         Chart.defaults.color = '#6B7A99';
         Chart.defaults.font.family = "'IBM Plex Mono', monospace";
         Chart.defaults.borderColor = '#2A3148';
 
+        // Store fetched data
+        let reportData = {
+            daily: [],
+            txns: []
+        };
+
+        // 2. Fetch Data from Backend
+        async function fetchAnalytics() {
+            try {
+                // Fetch daily summary and all transactions concurrently
+                const [dailyRes, txnsRes] = await Promise.all([
+                    fetch(`${BASE_URL}/api/reports/daily?days=7`, { headers: { 'X-API-Key': API_KEY } }),
+                    fetch(`${BASE_URL}/api/transactions?limit=1000`, { headers: { 'X-API-Key': API_KEY } })
+                ]);
+
+                const dailyJson = await dailyRes.json();
+                const txnsJson = await txnsRes.json();
+
+                if (dailyJson.success) reportData.daily = dailyJson.data;
+                if (txnsJson.success) reportData.txns = txnsJson.data;
+
+                // Update UI after fetching
+                updateKPIs();
+                updateTable();
+                
+            } catch (err) {
+                console.error("Error loading analytics:", err);
+            }
+        }
+
+        // 3. Update Top KPI Numbers
+        function updateKPIs() {
+            const txns = reportData.txns;
+            const totalRev7D = reportData.daily.reduce((sum, d) => sum + d.revenue, 0);
+            
+            let successCount = txns.filter(t => t.status === 'AUTHORIZED').length;
+            let successRate = txns.length > 0 ? ((successCount / txns.length) * 100).toFixed(1) : 0;
+            let avgTxns = (txns.length / 7).toFixed(1); 
+
+            const kpiValues = document.querySelectorAll('.kpi-value span');
+            if(kpiValues.length >= 4) {
+                kpiValues[0].innerText = totalRev7D.toLocaleString('en-IN'); 
+                kpiValues[1].innerText = avgTxns; 
+                kpiValues[3].innerText = successRate; 
+            }
+        }
+
+        // 4. Initialize Charts when scrolled into view
         const observer = new IntersectionObserver((entries) => {
             entries.forEach(entry => {
                 if (entry.isIntersecting) {
@@ -256,97 +313,112 @@
 
         document.querySelectorAll('.chart-container, .heatmap-wrapper').forEach(el => observer.observe(el));
 
+        // --- CHART 1: Revenue Line Chart ---
         function initRevenueChart() {
             const ctx = document.getElementById('revenueChart').getContext('2d');
-            
             let gradient = ctx.createLinearGradient(0, 0, 0, 300);
             gradient.addColorStop(0, 'rgba(245, 166, 35, 0.4)');
             gradient.addColorStop(1, 'rgba(245, 166, 35, 0.0)');
 
+            let labels = reportData.daily.map(d => d.date.substring(5)); // Extract MM-DD
+            let data = reportData.daily.map(d => d.revenue);
+
+            if(labels.length === 0) { labels = ['No Data']; data = [0]; }
+
             new Chart(ctx, {
                 type: 'line',
                 data: {
-                    labels: ['Apr 10', 'Apr 11', 'Apr 12', 'Apr 13', 'Apr 14', 'Apr 15', 'Apr 16'],
+                    labels: labels,
                     datasets: [{
                         label: 'Revenue (₹)',
-                        data: [2100, 3400, 2800, 4100, 3700, 2900, 3500],
+                        data: data,
                         borderColor: '#F5A623',
                         backgroundColor: gradient,
                         borderWidth: 2,
                         pointBackgroundColor: '#161A24',
                         pointBorderColor: '#F5A623',
-                        pointHoverBackgroundColor: '#F5A623',
                         fill: true,
                         tension: 0.3
                     }]
                 },
-                options: {
-                    responsive: true, maintainAspectRatio: false,
-                    plugins: { legend: { display: false } },
-                    scales: {
-                        y: { beginAtZero: true, grid: { color: '#2A3148' } },
-                        x: { grid: { display: false } }
-                    }
-                }
+                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, grid: { color: '#2A3148' } }, x: { grid: { display: false } } } }
             });
         }
 
+        // --- CHART 2: Vehicle Bar Chart ---
         function initVehicleBarChart() {
             const ctx = document.getElementById('vehicleBarChart').getContext('2d');
+            
+            // Group transactions by vehicle
+            const vehicleCounts = {};
+            reportData.txns.forEach(t => {
+                if(t.status === 'AUTHORIZED') {
+                    let v = t.vehicle_no || 'Unknown';
+                    vehicleCounts[v] = (vehicleCounts[v] || 0) + 1;
+                }
+            });
+
+            // Get top 5 vehicles
+            const sortedVehicles = Object.keys(vehicleCounts).sort((a,b) => vehicleCounts[b] - vehicleCounts[a]).slice(0, 5);
+            const labels = sortedVehicles.map(v => v.substring(0,8) + '..');
+            const data = sortedVehicles.map(v => vehicleCounts[v]);
+
             new Chart(ctx, {
                 type: 'bar',
                 data: {
-                    labels: ['MH-04...', 'UP-32...', 'DL-01...', 'KA-05...', 'TN-11...'],
+                    labels: labels.length ? labels : ['No Data'],
                     datasets: [{
                         label: 'Total Trips',
-                        data: [145, 203, 89, 312, 98],
+                        data: data.length ? data : [0],
                         backgroundColor: 'rgba(245, 166, 35, 0.8)',
                         borderColor: '#F5A623',
                         borderWidth: 1,
                         borderRadius: 2
                     }]
                 },
-                options: {
-                    responsive: true, maintainAspectRatio: false,
-                    plugins: { legend: { display: false } },
-                    scales: {
-                        y: { beginAtZero: true, grid: { color: '#2A3148' } },
-                        x: { grid: { display: false } }
-                    }
-                }
+                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, grid: { color: '#2A3148' } }, x: { grid: { display: false } } } }
             });
         }
 
+        // --- CHART 3: Success Ratio Doughnut ---
         function initRatioChart() {
             const ctx = document.getElementById('ratioChart').getContext('2d');
+            
+            let auth = reportData.txns.filter(t => t.status === 'AUTHORIZED').length;
+            let denied = reportData.txns.filter(t => t.status === 'DENIED').length;
+            
+            // Prevent empty chart bug
+            const total = auth + denied;
+            const chartData = total === 0 ? [1, 0] : [auth, denied];
+            const chartColors = total === 0 ? ['#2A3148', '#161A24'] : ['#F5A623', '#FF3B4E'];
+
+            // Update center text
+            let successRate = total > 0 ? ((auth / total) * 100).toFixed(1) : 0;
+            const centerVal = document.querySelector('.doughnut-val');
+            if(centerVal) centerVal.innerText = successRate + '%';
+
             new Chart(ctx, {
                 type: 'doughnut',
                 data: {
                     labels: ['Authorized', 'Denied'],
                     datasets: [{
-                        data: [94.8, 5.2],
-                        backgroundColor: ['#F5A623', '#FF3B4E'],
+                        data: chartData,
+                        backgroundColor: chartColors,
                         borderWidth: 0,
                         hoverOffset: 4
                     }]
                 },
-                options: {
-                    responsive: true, maintainAspectRatio: false, cutout: '75%',
-                    plugins: {
-                        legend: { position: 'bottom', labels: { color: '#E8ECF0' } }
-                    }
-                }
+                options: { responsive: true, maintainAspectRatio: false, cutout: '75%', plugins: { legend: { position: 'bottom', labels: { color: '#E8ECF0' } } } }
             });
         }
 
+        // --- Visual Heatmap (Simulated for UI) ---
         function initHeatmap() {
             const grid = document.getElementById('heatmapGrid');
             const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
             
             grid.innerHTML += `<div></div>`; 
-            for(let h=0; h<24; h++) {
-                grid.innerHTML += `<div class="hm-col-label">${h.toString().padStart(2, '0')}</div>`;
-            }
+            for(let h=0; h<24; h++) grid.innerHTML += `<div class="hm-col-label">${h.toString().padStart(2, '0')}</div>`;
 
             days.forEach(day => {
                 grid.innerHTML += `<div class="hm-label">${day}</div>`;
@@ -361,34 +433,48 @@
                     cell.style.backgroundColor = `rgba(245, 166, 35, ${opacity})`;
                     cell.setAttribute('data-tooltip', `${day} ${h}:00 — ${vehicles} txns`);
                     
-                    setTimeout(() => {
-                        cell.style.transition = 'opacity 0.5s ease';
-                        cell.style.opacity = 1;
-                    }, Math.random() * 1000 + 500);
-
+                    setTimeout(() => { cell.style.transition = 'opacity 0.5s ease'; cell.style.opacity = 1; }, Math.random() * 1000 + 500);
                     grid.appendChild(cell);
                 }
             });
         }
 
-        const counters = document.querySelectorAll('.kpi-value span');
-        counters.forEach(counter => {
-            const isDecimal = counter.getAttribute('data-decimal') === 'true';
-            const target = parseFloat(counter.getAttribute('data-target'));
-            let count = 0;
-            const inc = target / 40; 
-            
-            const updateCount = () => {
-                if (count < target) {
-                    count += inc;
-                    counter.innerText = isDecimal ? (count).toFixed(1) : Math.ceil(count).toLocaleString('en-IN');
-                    setTimeout(updateCount, 30);
-                } else {
-                    counter.innerText = isDecimal ? target.toFixed(1) : target.toLocaleString('en-IN');
+        // --- Per-Vehicle Summary Table ---
+        function updateTable() {
+            const tbody = document.querySelector('table tbody');
+            tbody.innerHTML = '';
+
+            const vehicleStats = {};
+            let totalTrips = 0, totalSpent = 0;
+
+            reportData.txns.forEach(t => {
+                if(t.status === 'AUTHORIZED') {
+                    let v = t.vehicle_no || 'Unknown';
+                    if(!vehicleStats[v]) vehicleStats[v] = { owner: t.owner_name || 'Unknown', trips: 0, spent: 0, lastSeen: t.timestamp.substring(0,10) };
+                    
+                    vehicleStats[v].trips += 1;
+                    vehicleStats[v].spent += t.amount;
+                    totalTrips += 1;
+                    totalSpent += t.amount;
+                    
+                    if(t.timestamp.substring(0,10) > vehicleStats[v].lastSeen) vehicleStats[v].lastSeen = t.timestamp.substring(0,10);
                 }
-            };
-            updateCount();
-        });
+            });
+
+            for (const [veh, stats] of Object.entries(vehicleStats)) {
+                const avg = (stats.spent / stats.trips).toFixed(0);
+                tbody.innerHTML += `<tr><td>${veh}</td><td>${stats.owner}</td><td>${stats.trips}</td><td style="color:var(--accent-green)">₹${stats.spent}</td><td>${avg}</td><td>${stats.lastSeen}</td></tr>`;
+            }
+
+            if(Object.keys(vehicleStats).length === 0) {
+                 tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;">No transaction data available yet.</td></tr>';
+            } else {
+                 tbody.innerHTML += `<tr class="totals-row"><td>TOTALS</td><td>--</td><td style="color:var(--accent-amber)">${totalTrips}</td><td style="color:var(--accent-amber)">₹${totalSpent}</td><td>--</td><td>--</td></tr>`;
+            }
+        }
+
+        // Start!
+        fetchAnalytics();
 
     </script>
 </body>

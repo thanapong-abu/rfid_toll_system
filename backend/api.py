@@ -222,6 +222,78 @@ def get_daily_reports():
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
+# ==========================================
+# NEW: RFID SCAN ENDPOINT (ระบบรับข้อมูลตัดเงินจากฮาร์ดแวร์)
+# ==========================================
+@app.route('/api/scan', methods=['POST'])
+def process_scan():
+    """Process a vehicle scan from the hardware/middleware."""
+    try:
+        data = request.json
+        rfid_id = data.get('rfid_id')
+        
+        if not rfid_id:
+            return jsonify({"success": False, "error": "Missing rfid_id"}), 400
+            
+        db = get_db()
+        cursor = db.cursor()
+        
+        # Look up user
+        cursor.execute("SELECT vehicle_no, owner_name, wallet_bal FROM users WHERE rfid_id = ?", (rfid_id,))
+        user = cursor.fetchone()
+        
+        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        toll_fee = 100.00
+        
+        if not user:
+            # Unknown tag (บัตรเถื่อน/ไม่ได้ลงทะเบียน)
+            cursor.execute('''
+                INSERT INTO transaction_log (rfid_id, timestamp, amount, status, reason)
+                VALUES (?, ?, 0, 'DENIED', 'UNKNOWN_TAG')
+            ''', (rfid_id, timestamp))
+            db.commit()
+            return jsonify({"success": True, "authorized": False, "reason": "UNKNOWN_TAG"})
+            
+        vehicle_no, owner_name, wallet_bal = user
+        
+        if wallet_bal >= toll_fee:
+            # Success! Deduct balance (เงินพอ ตัดเงิน 100 บาท)
+            new_bal = wallet_bal - toll_fee
+            cursor.execute("UPDATE users SET wallet_bal = ? WHERE rfid_id = ?", (new_bal, rfid_id))
+            
+            # Log successful transaction
+            cursor.execute('''
+                INSERT INTO transaction_log (rfid_id, timestamp, amount, status, reason)
+                VALUES (?, ?, ?, 'AUTHORIZED', 'SUCCESS')
+            ''', (rfid_id, timestamp, toll_fee))
+            
+            db.commit()
+            return jsonify({
+                "success": True, 
+                "authorized": True, 
+                "vehicle_no": vehicle_no,
+                "owner_name": owner_name,
+                "deducted": toll_fee,
+                "new_balance": new_bal
+            })
+        else:
+            # Insufficient funds (เงินไม่พอ)
+            cursor.execute('''
+                INSERT INTO transaction_log (rfid_id, timestamp, amount, status, reason)
+                VALUES (?, ?, 0, 'DENIED', 'INSUFFICIENT_FUNDS')
+            ''', (rfid_id, timestamp))
+            
+            db.commit()
+            return jsonify({
+                "success": True, 
+                "authorized": False, 
+                "reason": "INSUFFICIENT_FUNDS",
+                "current_balance": wallet_bal
+            })
+            
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
 if __name__ == '__main__':
     print("Starting Toll System API on port 5000...")
     print("API Key required: X-API-Key: toll2026")

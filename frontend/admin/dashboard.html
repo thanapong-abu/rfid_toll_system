@@ -438,114 +438,119 @@
     </main>
 
     <script>
-        document.addEventListener('DOMContentLoaded', () => {
-            
-            // 1. Live Clock
-            const clockEl = document.getElementById('liveClock');
-            setInterval(() => {
-                const now = new Date();
-                clockEl.textContent = now.toLocaleTimeString('en-US', { hour12: false });
-            }, 1000);
+        // 1. Live Clock
+        const clockEl = document.getElementById('liveClock');
+        setInterval(() => {
+            const now = new Date();
+            clockEl.textContent = now.toLocaleTimeString('en-US', { hour12: false });
+        }, 1000);
 
-            // 2. Count-up Animation for KPIs
-            const counters = document.querySelectorAll('.kpi-value[data-target], span[data-target]');
-            counters.forEach(counter => {
-                const updateCount = () => {
-                    const target = +counter.getAttribute('data-target');
-                    const count = +counter.innerText;
-                    const inc = target / 50; 
+        // ==========================================
+        // REAL BACKEND INTEGRATION
+        // ==========================================
+        
+        // IMPORTANT: Replace this URL with your actual Render URL
+        const BASE_URL = "https://rfid-toll-system.onrender.com"; 
+        const API_KEY = "toll2026";
 
-                    if (count < target) {
-                        counter.innerText = Math.ceil(count + inc);
-                        setTimeout(updateCount, 30);
-                    } else {
-                        counter.innerText = target;
-                    }
-                };
-                updateCount();
-            });
-
-            // 3. Mock Data for Live Feed
-            const mockData = [
-                { uid: "8D 20 06 85", veh: "MH-04-AB-1234", name: "Fawwaz Mohd Ubaid", amt: "₹100", status: "AUTHORIZED" },
-                { uid: "A1 B2 C3 D4", veh: "UP-32-CD-5678", name: "Ayyub Waqar Faridi", amt: "₹100", status: "AUTHORIZED" },
-                { uid: "F1 E2 D3 C4", veh: "DL-01-XY-9999", name: "Thanaphong T.", amt: "₹0", status: "DENIED" },
-                { uid: "12 34 56 78", veh: "KA-05-PQ-3344", name: "Madani Hassan", amt: "₹100", status: "AUTHORIZED" },
-                { uid: "AA BB CC DD", veh: "TN-11-ZZ-7788", name: "Abdalla Haroun", amt: "₹100", status: "AUTHORIZED" }
-            ];
-
-            const feedBody = document.getElementById('feedBody');
-            let txnCounter = 847;
-
-            function addFeedRow(data, animate = true) {
-                const tr = document.createElement('tr');
-                if(animate) tr.className = 'row-animate';
-                
-                const badgeClass = data.status === 'AUTHORIZED' ? 'badge auth' : 'badge denied';
-                const amtStyle = data.status === 'DENIED' ? 'color: var(--accent-red); text-decoration: line-through;' : 'color: var(--accent-green);';
-
-                tr.innerHTML = `
-                    <td style="color: var(--accent-amber); font-family: 'IBM Plex Mono';">#TXN-${txnCounter++}</td>
-                    <td style="font-family: 'IBM Plex Mono'; color: var(--text-muted);">${data.uid}</td>
-                    <td>${data.veh}</td>
-                    <td>${data.name}</td>
-                    <td style="${amtStyle}">${data.amt}</td>
-                    <td><span class="${badgeClass}">${data.status}</span></td>
-                `;
-
-                feedBody.prepend(tr);
-
-                // Keep only last 8 rows
-                if (feedBody.children.length > 8) {
-                    feedBody.removeChild(feedBody.lastChild);
+        // 2. Fetch Dashboard Stats (KPIs)
+        function fetchStats() {
+            fetch(`${BASE_URL}/api/stats`, {
+                method: 'GET',
+                headers: { 'X-API-Key': API_KEY }
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    // Update the numbers directly from database
+                    document.getElementById('kpi-vehicles').innerText = data.data.total_vehicles;
+                    document.getElementById('kpi-txns').innerText = data.data.today_transactions;
+                    document.getElementById('kpi-rev').innerText = data.data.today_revenue;
+                    document.getElementById('kpi-denied').innerText = data.data.denied_today;
                 }
-            }
+            })
+            .catch(err => console.error("Error fetching stats:", err));
+        }
 
-            // Initial populate
-            mockData.forEach(d => addFeedRow(d, false));
+        // 3. Fetch Live Transactions Feed
+        function fetchTransactions() {
+            // Fetch only the latest 8 transactions for the dashboard feed
+            fetch(`${BASE_URL}/api/transactions?limit=8`, {
+                method: 'GET',
+                headers: { 'X-API-Key': API_KEY }
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    const feedBody = document.getElementById('feedBody');
+                    feedBody.innerHTML = ''; // Clear current feed
+                    
+                    data.data.forEach(txn => {
+                        const tr = document.createElement('tr');
+                        tr.className = 'row-animate';
+                        
+                        const isAuth = txn.status === 'AUTHORIZED';
+                        const badgeClass = isAuth ? 'badge auth' : 'badge denied';
+                        const amtStyle = isAuth ? 'color: var(--accent-green);' : 'color: var(--accent-red); text-decoration: line-through;';
+                        
+                        // Handle cases where vehicle is unregistered
+                        const ownerName = txn.owner_name || 'Unknown';
+                        const vehicleNo = txn.vehicle_no || 'Unknown';
 
-            // Simulate incoming data every 4 seconds
-            setInterval(() => {
-                const randomUser = mockData[Math.floor(Math.random() * mockData.length)];
-                addFeedRow(randomUser);
-            }, 4000);
+                        tr.innerHTML = `
+                            <td style="color: var(--accent-amber); font-family: 'IBM Plex Mono';">#TXN-${txn.id}</td>
+                            <td style="font-family: 'IBM Plex Mono'; color: var(--text-muted);">${txn.rfid_id}</td>
+                            <td>${vehicleNo}</td>
+                            <td>${ownerName}</td>
+                            <td style="${amtStyle}">₹${txn.amount}</td>
+                            <td><span class="${badgeClass}">${txn.status}</span></td>
+                        `;
+                        feedBody.appendChild(tr);
+                    });
+                }
+            })
+            .catch(err => console.error("Error fetching transactions:", err));
+        }
 
+        // 4. Initial Fetch and Auto-Refresh Setup
+        // Fetch immediately on load
+        fetchStats();
+        fetchTransactions();
+        
+        // Auto-refresh every 5 seconds (5000 ms) to keep dashboard live
+        setInterval(fetchStats, 5000);
+        setInterval(fetchTransactions, 5000);
 
-            // 4. Gate Simulation Logic
-            const simBtn = document.getElementById('simBtn');
-            const barrierArm = document.getElementById('barrierArm');
-            const gateLight = document.getElementById('gateLight');
-            const scanBlock = document.getElementById('scanBlock');
-            let isOpen = false;
+        // ==========================================
+        // UI GATE SIMULATION (Visual Only)
+        // ==========================================
+        const simBtn = document.getElementById('simBtn');
+        const barrierArm = document.getElementById('barrierArm');
+        const gateLight = document.getElementById('gateLight');
+        const scanBlock = document.getElementById('scanBlock');
+        let isOpen = false;
 
-            simBtn.addEventListener('click', () => {
-                if (isOpen) return; // Prevent spam
+        simBtn.addEventListener('click', () => {
+            if (isOpen) return; // Prevent spam
 
-                // 1. Flash Light Green & Open Gate
-                gateLight.setAttribute('fill', '#00FF88');
-                barrierArm.classList.add('open');
-                scanBlock.style.borderLeftColor = 'var(--accent-green)';
-                isOpen = true;
+            // Flash Light Green & Open Gate visually
+            gateLight.setAttribute('fill', '#00FF88');
+            barrierArm.classList.add('open');
+            scanBlock.style.borderLeftColor = 'var(--accent-green)';
+            isOpen = true;
 
-                // Pick a random success user for the last scan detail
-                const user = mockData.filter(d => d.status === 'AUTHORIZED')[Math.floor(Math.random() * 4)];
-                
-                scanBlock.innerHTML = `
-                    <div style="font-family: 'Orbitron'; font-size: 0.8rem; color: var(--text-muted); margin-bottom: 12px;">LAST SCAN DETAIL</div>
-                    <div class="data-row"><span class="data-label">UID:</span> <span class="data-value" style="font-family: monospace;">${user.uid}</span></div>
-                    <div class="data-row"><span class="data-label">VEHICLE:</span> <span class="data-value">${user.veh}</span></div>
-                    <div class="data-row"><span class="data-label">OWNER:</span> <span class="data-value">${user.name}</span></div>
-                    <div class="data-row"><span class="data-label">STATUS:</span> <span class="data-value success">AUTHORIZED ✓</span></div>
-                    <div class="data-row"><span class="data-label">BAL AFTER:</span> <span class="data-value">₹${Math.floor(Math.random() * 2000) + 100}</span></div>
-                `;
+            scanBlock.innerHTML = `
+                <div style="font-family: 'Orbitron'; font-size: 0.8rem; color: var(--text-muted); margin-bottom: 12px;">SYSTEM MESSAGE</div>
+                <div class="data-row"><span class="data-label">INFO:</span> <span class="data-value">Gate mechanism tested</span></div>
+                <div class="data-row"><span class="data-label">STATUS:</span> <span class="data-value success">OPERATIONAL ✓</span></div>
+            `;
 
-                // 2. Close after 3 seconds
-                setTimeout(() => {
-                    barrierArm.classList.remove('open');
-                    gateLight.setAttribute('fill', '#F5A623');
-                    isOpen = false;
-                }, 3000);
-            });
+            // Close after 3 seconds
+            setTimeout(() => {
+                barrierArm.classList.remove('open');
+                gateLight.setAttribute('fill', '#F5A623');
+                isOpen = false;
+            }, 3000);
         });
     </script>
 </body>
