@@ -18,7 +18,7 @@ API_KEY = 'toll2026'
 @app.route('/')
 def serve_dashboard():
     frontend_path = os.path.join(os.path.dirname(__file__), "..", "frontend")
-    return send_from_directory(frontend_path, 'dashboard.html')
+    return send_from_directory(frontend_path, 'index.html') # <--- เปลี่ยนตรงนี้จุดเดียว!
 
 @app.route('/<path:path>')
 def serve_static(path):
