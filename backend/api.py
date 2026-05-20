@@ -1,15 +1,29 @@
 # requirements: pip install Flask Flask-Cors
-from flask import Flask, request, jsonify, g
+from flask import Flask, request, jsonify, g, send_from_directory
 from flask_cors import CORS
 import sqlite3
 from datetime import datetime, timedelta
 import logging
+import os
 
 app = Flask(__name__)
-CORS(app)  # Allow cross-origin requests from your HTML frontend
+CORS(app) # Allow cross-origin requests from your HTML frontend
 
 DB_NAME = 'toll_system.db'
 API_KEY = 'toll2026'
+
+# ==========================================
+# SERVE FRONTEND (DASHBOARD)
+# ==========================================
+@app.route('/')
+def serve_dashboard():
+    frontend_path = os.path.join(os.path.dirname(__file__), "..", "frontend")
+    return send_from_directory(frontend_path, 'dashboard.html')
+
+@app.route('/<path:path>')
+def serve_static(path):
+    frontend_path = os.path.join(os.path.dirname(__file__), "..", "frontend")
+    return send_from_directory(frontend_path, path)
 
 # ==========================================
 # DATABASE HELPER
@@ -18,7 +32,7 @@ def get_db():
     db = getattr(g, '_database', None)
     if db is None:
         db = g._database = sqlite3.connect(DB_NAME)
-        db.row_factory = sqlite3.Row  # Return rows as dictionaries
+        db.row_factory = sqlite3.Row # Return rows as dictionaries
     return db
 
 @app.teardown_appcontext
@@ -26,7 +40,6 @@ def close_connection(exception):
     db = getattr(g, '_database', None)
     if db is not None:
         db.close()
-
 # ==========================================
 # AUTHENTICATION MIDDLEWARE
 # ==========================================
