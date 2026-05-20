@@ -49,11 +49,14 @@ def require_api_key():
     if request.method == 'OPTIONS':
         return
     
-    # Check for API key in headers
+    # EXCEPTION: Do not require API key for frontend files
+    if request.path == '/' or request.path.startswith('/frontend') or '.' in request.path:
+        return
+    
+    # Check for API key in headers for all /api/ requests
     key = request.headers.get('X-API-Key')
     if key != API_KEY:
         return jsonify({"success": False, "error": "Unauthorized. Invalid or missing API Key."}), 401
-
 # ==========================================
 # ENDPOINTS
 # ==========================================
